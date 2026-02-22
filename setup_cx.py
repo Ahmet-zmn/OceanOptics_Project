@@ -67,7 +67,7 @@ build_exe_options = {
         "json",
         "subprocess",
     ],
-    "excludes": [],
+    "excludes": ["PySide2", "PyQt5", "PyQt6", "IPython", "email", "html", "http", "pydoc", "test", "unittest", "xml", "notebook", "jedi"],
     "include_files": include_files,
     "include_msvcr": True,      # Visual C++ runtime dahil et
     "silent": True,
@@ -80,7 +80,7 @@ base_gui = "Win32GUI" if sys.platform == "win32" else None
 
 setup(
     name="USB4000 Spektrometre",
-    version="1.0.2",
+    version="1.0.3",
     description="Ocean Optics USB4000 Spektrometre GUI",
     options={"build_exe": build_exe_options},
     executables=[

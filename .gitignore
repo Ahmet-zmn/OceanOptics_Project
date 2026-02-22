@@ -23,8 +23,8 @@ wheels/
 *.egg
 
 # Installer & Build
-# dist/ and large installers are excluded due to GitHub size limits (100MB)
-dist/
+# dist/
+!dist/*.exe
 winusb/*.exe
 
 # Scripts
