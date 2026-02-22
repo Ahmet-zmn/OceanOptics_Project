@@ -65,6 +65,7 @@ class OceanOpticsGUI:
         self.config_file = "config.json"
         self.lang_dir = "languages"
         self.translations = {}
+        self.omni_url = "" # Dynamic OmniDriver URL from GitHub
         self.lang = "tr"
         self._stop_update = False
         self.record_count = 0 
