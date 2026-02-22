@@ -889,10 +889,13 @@ class DriverInstallationDialog:
                 self.gui.set_busy_cursor(True)
                 urllib.request.urlretrieve(zip_url, target_zip)
                 
-                # Extract zip if possible (using zipfile)
+                # Extract zip into winusb_driver subdirectory
+                winusb_driver_path = os.path.join(winusb_path, "winusb_driver")
+                if not os.path.exists(winusb_driver_path): os.makedirs(winusb_driver_path)
+                
                 import zipfile
                 with zipfile.ZipFile(target_zip, 'r') as zip_ref:
-                    zip_ref.extractall(winusb_path)
+                    zip_ref.extractall(winusb_driver_path)
                 
                 os.remove(target_zip)
                 messagebox.showinfo("Success", self.gui.get_text("msg_drivers_success"))
