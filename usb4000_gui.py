@@ -264,15 +264,16 @@ class OceanOpticsGUI:
             try:
                 with urllib.request.urlopen(v_url, timeout=5) as response:
                     data = json.loads(response.read().decode())
-                    new_v = data.get("version", "1.0.0")
-                    if new_v > APP_VERSION:
-                        self.root.after(0, lambda: self.prompt_update(new_v))
+                    server_v = data.get("version", "1.0.0")
+                    self.omni_url = data.get("omni_driver_url", "")
+                    
+                    if server_v > APP_VERSION:
+                        self.root.after(0, lambda: self.prompt_update(server_v))
                     elif manual:
-                        self.root.after(0, lambda: messagebox.showinfo(self.get_text("menu_check_update"), self.get_text("msg_up_to_date").format(version=APP_VERSION)))
+                        self.root.after(0, lambda: messagebox.showinfo(self.get_text("menu_check_update"), self.get_text("msg_no_update", "Your software is up to date.")))
             except Exception as e:
-                if manual:
-                    self.root.after(0, lambda: messagebox.showerror(self.get_text("menu_check_update"), self.get_text("msg_update_error").format(error=str(e))))
-
+                if manual: self.root.after(0, lambda: messagebox.showerror("Error", self.get_text("msg_update_error").format(error=str(e))))
+        
         threading.Thread(target=run_check, daemon=True).start()
 
     def prompt_update(self, new_v):
@@ -933,8 +934,11 @@ class DriverInstallationDialog:
             try:
                 self.gui.set_busy_cursor(True)
                 if not os.path.exists(installer_path):
-                    # Download it from GitHub
-                    omni_url = GITHUB_URL + "/raw/main/winusb/OmniDriver-2.80-win64-installer.exe"
+                    # Use URL from version.json if fetched, else fallback to hardcoded
+                    omni_url = getattr(self.gui, 'omni_url', "")
+                    if not omni_url:
+                        omni_url = "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe"
+                    
                     messagebox.showinfo("Download", self.gui.get_text("msg_downloading_omni"))
                     urllib.request.urlretrieve(omni_url, installer_path)
                 

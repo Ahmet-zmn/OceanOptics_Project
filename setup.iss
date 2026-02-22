@@ -85,8 +85,8 @@ Filename: "icacls.exe"; \
 ; OmniDriver İndirme ve Kurulum (Opsiyonel/Setup sırasında indirilir)
 ; Kullanıcı interneti yoksa hata alabilir, bu yüzden bu adımı dikkatli kullanıyoruz
 Filename: "powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$url='https://github.com/Ahmet-zmn/OceanOptics_Project/raw/main/winusb/OmniDriver-2.80-win64-installer.exe'; $out='{app}\winusb\OmniDriver-2.80-win64-installer.exe'; if(!(Test-Path $out)){ Write-Host 'İndiriliyor...'; iwr -Uri $url -OutFile $out }"""; \
-    Flags: runhidden waituntilterminated; StatusMsg: "OmniDriver (USB Sürücüleri) GitHub'dan indiriliyor, lütfen bekleyin (125MB)..."; \
+    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$json=(iwr -Uri 'https://raw.githubusercontent.com/Ahmet-zmn/OceanOptics_Project/main/version.json' -UseBasicParsing | ConvertFrom-Json); $url=$json.omni_driver_url; $out='{app}\winusb\OmniDriver-2.80-win64-installer.exe'; if(!(Test-Path $out)){ Write-Host ""İndiriliyor: $url""; iwr -Uri $url -OutFile $out }"""; \
+    Flags: runhidden waituntilterminated; StatusMsg: "OmniDriver (USB Sürücüleri) GitHub'dan indiriliyor, lütfen bekleyin..."; \
     Check: not FileExists(ExpandConstant('{app}\winusb\OmniDriver-2.80-win64-installer.exe'))
 
 ; OmniDriver Çalıştırma
