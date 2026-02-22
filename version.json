@@ -1,5 +1,5 @@
 {
-    "version": "1.0.2",
+    "version": "1.0.3",
     "name": "OceanOptics USB4000 Spectrometer Controller",
     "date": "2026-02-22",
     "omni_driver_url": "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe"

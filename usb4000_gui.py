@@ -10,7 +10,7 @@ import subprocess
 from datetime import datetime
 import urllib.request
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
 GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
 
