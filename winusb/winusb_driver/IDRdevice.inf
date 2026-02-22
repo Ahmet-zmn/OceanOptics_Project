@@ -1,0 +1,47 @@
+[Version]
+Signature="$Windows NT$"
+Class=Ports
+ClassGUID={4D36E978-E325-11CE-BFC1-08002BE10318}
+Provider=%PRVDR%
+LayoutFile=layout.inf
+DriverVer=03/09/2010,1.1
+CatalogFile=ooi_idrdevice.cat
+
+[Manufacturer]
+%MFGNAME%=VirComDevice,NT,NTamd64
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[VirComDevice.NT]
+%DESCRIPTION%=DriverInstall,USB\VID_2504&PID_0300
+
+[VirComDevice.NTamd64]
+%DESCRIPTION%=DriverInstall,USB\VID_2504&PID_0300
+
+[DriverInstall.NT]
+Include=mdmcpq.inf
+CopyFiles=FakeModemCopyFileSection
+AddReg=DriverInstall.NT.AddReg
+
+[DriverInstall.NT.AddReg]
+HKR,,DevLoader,,*ntkern
+HKR,,NTMPDriver,,usbser.sys
+HKR,,EnumPropPages32,,"MsPorts.dll,SerialPortPropPageProvider"
+
+[DriverInstall.NT.Services]
+AddService=usbser, 0x00000002, DriverServiceInst
+
+[DriverServiceInst]
+DisplayName=%SERVICE%
+ServiceType = 1 ; SERVICE_KERNEL_DRIVER
+StartType = 3 ; SERVICE_DEMAND_START
+ErrorControl = 1 ; SERVICE_ERROR_NORMAL
+ServiceBinary= %12%\usbser.sys
+LoadOrderGroup = Base
+
+[Strings]
+PRVDR       = "Ocean Optics CDC"
+MFGNAME     = "Ocean Optics"
+DESCRIPTION = "IDR Device"
+SERVICE     = "IDR Device Com Port Driver"

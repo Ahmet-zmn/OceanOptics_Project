@@ -1,0 +1,97 @@
+; $Id: Elmo2238_64.inf,v 2.0.0.0 14/11/2012 06:32:00 Elmo Exp $
+
+[Version]                                                       ; Version section
+Signature="$WINDOWS NT$"
+                                           ; All Windows versions
+Class=Ports                                                     ; This is a serial port driver
+ClassGuid={4D36E978-E325-11CE-BFC1-08002BE10318}                ; Associated GUID
+Provider=%ELMO%                                                 ; Driver is provided by ELMO
+DriverVer=05/04/2014,2.0.0.1                                    ; Driver version 2.0.0.0  published on 14 Nov 2012
+CatalogFile=elmo2238_64.cat
+
+[DestinationDirs]                                               ; DestinationDirs section
+DefaultDestDir=12                                               ; Default install directory is \drivers or \IOSubSys
+
+[Manufacturer]                                                  ; Manufacturer section
+%ELMO%=DeviceList, NTx86, NTamd64,NTIA64                               ; Only one manufacturer (ELMO), models section is named
+                                                                ; DeviceList, NTx86, NTamd64
+
+[DeviceList.NTx86]                                                       ; Models section corresponding to ELMO
+%USBtoSerialFAEElmo%=USBtoSer.Install,USB\VID_2238&PID_0001     ; GMAS  - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0001h - GMAS. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverter%=USBtoSer.Install,USB\VID_2238&PID_0002   ; SCORE - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0002h - SCORE. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverter%=USBtoSer.Install,USB\VID_2238&PID_0003   ; GCON  - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0003h - GCON. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverterAT91%=USBtoSer.Install,USB\VID_03EB&PID_6119   ; OldVer/Debug - In case user uses a debug/old versions of SCORE/GCON
+								; 	  Identifies a device with ATMEL Vendor ID (03EBh) and
+                                                                ; 	  Product ID equal to 6119h. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialFAEOld%=USBtoSer.Install, USB\VID_0525&PID_A4A7     ; GMAS old driver - the one that comes with the CPU          
+
+
+[DeviceList.NTIA64]                                                       ; Models section corresponding to ELMO
+%USBtoSerialFAEElmo%=USBtoSer.Install,USB\VID_2238&PID_0001     ; GMAS  - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0001h - GMAS. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverter%=USBtoSer.Install,USB\VID_2238&PID_0002   ; SCORE - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0002h - SCORE. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverter%=USBtoSer.Install,USB\VID_2238&PID_0003   ; GCON  - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0003h - GCON. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverterAT91%=USBtoSer.Install,USB\VID_03EB&PID_6119   ; OldVer/Debug - In case user uses a debug/old versions of SCORE/GCON
+								; 	  Identifies a device with ATMEL Vendor ID (03EBh) and
+                                                                ; 	  Product ID equal to 6119h. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialFAEOld%=USBtoSer.Install, USB\VID_0525&PID_A4A7     ; GMAS old driver - the one that comes with the CPU          
+
+[DeviceList.NTamd64]
+%USBtoSerialFAEElmo%=USBtoSer.Install,USB\VID_2238&PID_0001     ; GMAS  - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0001h - GMAS. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverter%=USBtoSer.Install,USB\VID_2238&PID_0002   ; SCORE - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0002h - SCORE. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverter%=USBtoSer.Install,USB\VID_2238&PID_0003   ; GCON  - Identifies a device with ELMO Vendor ID (2238h) and
+                                                                ; 	  Product ID equal to 0003h - GCON. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialConverterAT91%=USBtoSer.Install,USB\VID_03EB&PID_6119   ; OldVer/Debug - In case user uses a debug/old versions of SCORE/GCON
+								; 	  Identifies a device with ATMEL Vendor ID (03EBh) and
+                                                                ; 	  Product ID equal to 6119h. Corresponding Install section
+                                                                ; 	  is named USBtoSer.Install
+%USBtoSerialFAEOld%=USBtoSer.Install, USB\VID_0525&PID_A4A7     ; GMAS old driver - the one that comes with the CPU    
+
+  
+[USBtoSer.Install]                                              ; Install section
+include=mdmcpq.inf
+needs=FakeModemCopyFileSection
+CopyFiles=FakeModemCopyFileSection
+AddReg=USBtoSer.AddReg                                          ; Registry keys to add are listed in USBtoSer.AddReg
+
+
+[USBtoSer.AddReg]                                               ; AddReg section
+HKR,,DevLoader,,*ntkern                                         ;
+HKR,,NTMPDriver,,usbser.sys
+HKR,,EnumPropPages32,,"MsPorts.dll,SerialPortPropPageProvider"
+
+[USBtoSer.Install.Services]                                     ; Services section
+AddService=usbser,0x00000002,USBtoSer.AddService                ; Assign usbser as the PnP driver for the device
+
+[USBtoSer.AddService]                                           ; Service install section
+DisplayName=%USBSer%                                            ; Name of the serial driver
+ServiceType=1                                                   ; Service kernel driver
+StartType=3                                                     ; Driver is started by the PnP manager
+ErrorControl=1                                                  ; Warn about errors
+ServiceBinary=%12%\usbser.sys                                   ; Driver filename
+
+[Strings]                                                       ; Strings section
+ELMO="ELMO LTD."                                             	; String value for the ELMO symbol
+USBtoSerialFAEOld="ELMO GMAS"					; String value for the USBtoSerialFAEElmoOld symbol
+USBtoSerialFAEElmo="ELMO GMAS"                                  ; String value for the USBtoSerialFAEElmo symbol
+USBtoSerialConverter="ELMO USB to Serial Converter"             ; String value for the USBtoSerialConverter symbol
+USBtoSerialConverterAT91="AT91 USB to Serial Converter"         ; String value for the USBtoSerialConverterAT91 symbol
+USBSer="USB Serial Driver"                                      ; String value for the USBSer symbol
