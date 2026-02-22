@@ -75,7 +75,8 @@ class OceanOpticsGUI:
         self.load_config()
         # self.find_origin_exe() # Moved logic
         # self.initialize_device() # Disable auto-connect
-        self.root.after(100, self.find_origin_exe) # Silent check after UI init
+        self.root.after(100, lambda: self.find_origin_exe(silent=True))
+        self.root.after(2000, lambda: self.check_for_updates(manual=False))
         
         self.root.title(self.get_text("title"))
         self.root.geometry("1000x920")
@@ -252,21 +253,57 @@ class OceanOpticsGUI:
         self.menubar.add_cascade(label=self.get_text("menu_help"), menu=self.help_menu)
         self.root.config(menu=self.menubar)
 
-    def check_for_updates(self):
+    def check_for_updates(self, manual=True):
         """GitHub üzerinden yeni versiyon kontrolü yapar."""
-        # raw.githubusercontent üzerinden version.json kontrolü
         v_url = GITHUB_URL.replace("github.com", "raw.githubusercontent.com") + "/main/version.json"
-        try:
-            with urllib.request.urlopen(v_url, timeout=5) as response:
-                data = json.loads(response.read().decode())
-                new_v = data.get("version", "1.0.0")
-                if new_v > APP_VERSION:
-                    if messagebox.askyesno(self.get_text("menu_check_update"), self.get_text("msg_update_found").format(version=new_v)):
-                        subprocess.Popen(f'start {GITHUB_URL}', shell=True)
-                else:
-                    messagebox.showinfo(self.get_text("menu_check_update"), self.get_text("msg_up_to_date").format(version=APP_VERSION))
-        except Exception as e:
-            messagebox.showerror(self.get_text("menu_check_update"), self.get_text("msg_update_error").format(error=str(e)))
+        
+        def run_check():
+            try:
+                with urllib.request.urlopen(v_url, timeout=5) as response:
+                    data = json.loads(response.read().decode())
+                    new_v = data.get("version", "1.0.0")
+                    if new_v > APP_VERSION:
+                        self.root.after(0, lambda: self.prompt_update(new_v))
+                    elif manual:
+                        self.root.after(0, lambda: messagebox.showinfo(self.get_text("menu_check_update"), self.get_text("msg_up_to_date").format(version=APP_VERSION)))
+            except Exception as e:
+                if manual:
+                    self.root.after(0, lambda: messagebox.showerror(self.get_text("menu_check_update"), self.get_text("msg_update_error").format(error=str(e))))
+
+        threading.Thread(target=run_check, daemon=True).start()
+
+    def prompt_update(self, new_v):
+        if messagebox.askyesno(self.get_text("menu_check_update"), self.get_text("msg_update_found").format(version=new_v)):
+            self.download_and_install_update()
+
+    def download_and_install_update(self):
+        # Installer URL
+        exe_url = GITHUB_URL + "/raw/main/dist/OceanOptics_USB4000_Setup.exe"
+        temp_dir = os.environ.get("TEMP", os.getcwd())
+        target_path = os.path.join(temp_dir, "OceanOptics_USB4000_Setup_Update.exe")
+        
+        # Show status
+        status_win = tk.Toplevel(self.root)
+        status_win.title(self.get_text("menu_check_update"))
+        status_win.geometry("300x100")
+        status_win.transient(self.root)
+        status_win.grab_set()
+        
+        tk.Label(status_win, text=self.get_text("msg_downloading"), pady=20).pack()
+        self.root.update_idletasks()
+
+        def do_download():
+            try:
+                urllib.request.urlretrieve(exe_url, target_path)
+                status_win.destroy()
+                # Run installer and exit
+                subprocess.Popen(f'"{target_path}"', shell=True)
+                self.on_close()
+            except Exception as e:
+                status_win.destroy()
+                messagebox.showerror("Error", self.get_text("msg_download_error").format(error=str(e)))
+
+        threading.Thread(target=do_download, daemon=True).start()
 
     def change_language(self, lang):
         self.lang = lang; self.save_config()

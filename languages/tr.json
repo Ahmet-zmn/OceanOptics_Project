@@ -81,5 +81,7 @@
     "msg_update_found": "Yeni bir sürüm mevcut ({version}). GitHub sayfasını açmak ister misiniz?",
     "msg_up_to_date": "Yazılımınız güncel (Sürüm: {version})",
     "msg_update_error": "Güncelleme kontrolü başarısız: {error}",
-    "msg_no_measurements": "Kayıt dosyası bulunamadı."
+    "msg_no_measurements": "Kayıt dosyası bulunamadı.",
+    "msg_downloading": "Güncelleme indiriliyor... Lütfen bekleyin.",
+    "msg_download_error": "İndirme hatası: {error}"
 }

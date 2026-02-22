@@ -82,5 +82,7 @@
     "msg_update_found": "A new version is available ({version}). Would you like to visit the GitHub page?",
     "msg_up_to_date": "Software is up to date (Version: {version})",
     "msg_update_error": "Update check failed: {error}",
-    "msg_no_measurements": "No measurement file found."
+    "msg_no_measurements": "No measurement file found.",
+    "msg_downloading": "Downloading update... Please wait.",
+    "msg_download_error": "Download failed: {error}"
 }
