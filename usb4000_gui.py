@@ -93,6 +93,8 @@ class OceanOpticsGUI:
         self.is_recording = False
         self.thread = None
         self.last_saved_file = None
+        self.mode = "Intensity"
+        self.view_mode = "Intensity"
         self.available_devices = [] # List of (id, model)
         self.monitors = [] # Active wavelength monitor windows
         
@@ -195,6 +197,7 @@ class OceanOpticsGUI:
                     self.plot_styles = config.get("plot_styles", default_styles)
                     self.origin_exe = config.get("origin_exe", None)
                     self.origin_version = config.get("origin_version", "OriginLab")
+                    self.last_saved_file = config.get("last_saved_file", None)
             except: 
                 self.lang = "tr"; self.save_path = default_save_path; self.log_format = "Timestamp"; self.plot_styles = default_styles
                 self.origin_exe = None; self.origin_version = "OriginLab"
@@ -211,7 +214,8 @@ class OceanOpticsGUI:
             "log_format": self.log_format, 
             "plot_styles": self.plot_styles,
             "origin_exe": self.origin_exe,
-            "origin_version": self.origin_version
+            "origin_version": self.origin_version,
+            "last_saved_file": self.last_saved_file
         }
         try:
             with open(self.config_file, 'w') as f: json.dump(config, f, indent=4)
@@ -693,7 +697,7 @@ class OceanOpticsGUI:
         self.start_acquisition(is_recording=False); self.set_busy_cursor(False)
 
     def save_calibration_to_csv(self, type_name, spectrum):
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); filename = f"{type_name}_{timestamp}.csv"; full_path = os.path.join(self.save_path, filename); self.last_saved_file = full_path
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); filename = f"{type_name}_{timestamp}.csv"; full_path = os.path.join(self.save_path, filename); self.last_saved_file = full_path; self.save_config()
         if not os.path.exists(self.save_path): os.makedirs(self.save_path)
         try:
             with open(full_path, mode='w', newline='') as file:
@@ -753,7 +757,7 @@ class OceanOpticsGUI:
         if self.is_recording and self.w_ms > 0: time.sleep(self.w_ms / 1000.0)
         file = None; writer = None
         if self.is_recording:
-            start_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); csv_filename = f"{self.fname}_{self.mode}_{start_timestamp}.csv"; full_path = os.path.join(self.save_path, csv_filename); self.last_saved_file = full_path
+            start_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); csv_filename = f"{self.fname}_{self.mode}_{start_timestamp}.csv"; full_path = os.path.join(self.save_path, csv_filename); self.last_saved_file = full_path; self.save_config()
             if not os.path.exists(self.save_path): os.makedirs(self.save_path)
             try:
                 file = open(full_path, mode='w', newline=''); writer = csv.writer(file); label = "Index" if self.log_format == "Sequential" else "Timestamp"; writer.writerow([label] + [f"{w:.2f}" for w in self.wavelengths])
@@ -812,20 +816,19 @@ class OceanOpticsGUI:
             if os.path.exists(self.save_path):
                 files = [os.path.join(self.save_path, f) for f in os.listdir(self.save_path) if f.lower().endswith('.csv')]
                 if files:
-                    target_file = max(files, key=os.path.getctime)
+                    # mtime (modification time) daha güvenli, ctime (creation) bazen garip davranabilir
+                    target_file = max(files, key=os.path.getmtime)
         
         if target_file and os.path.exists(target_file):
             target_file = os.path.abspath(target_file)
             try:
                 if self.origin_exe and os.path.exists(self.origin_exe):
-                    # OriginPro'yu liste olarak başlatmak (shell=False) tırnak sorunlarını otomatik çözer
-                    # LabTalk komutunu tek bir argüman olarak geçiyoruz
                     labtalk_cmd = f'open -w "{target_file}"'
                     subprocess.Popen([self.origin_exe, "-oc", labtalk_cmd])
                 else:
                     os.startfile(target_file)
             except Exception as e: 
-                messagebox.showerror("Error", f"Could not open file in OriginPro: {e}")
+                messagebox.showerror("Error", f"Could not open file: {e}")
         else: 
             messagebox.showwarning("Warning", self.get_text("msg_no_measurements") if hasattr(self, 'get_text') else "No measurement file found.")
 
