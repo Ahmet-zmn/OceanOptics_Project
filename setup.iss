@@ -57,7 +57,7 @@ Source: "{#MyAppDir}\share\*"; DestDir: "{app}\share"; Flags: ignoreversion recu
 ; OceanDirect SDK
 Source: "{#MyAppDir}\oceandirect\*"; DestDir: "{app}\oceandirect"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-; WinUSB & OmniDriver Installers
+; WinUSB (Slim subset for USB4000)
 Source: "{#MyAppDir}\winusb\*"; DestDir: "{app}\winusb"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
@@ -65,6 +65,8 @@ Source: "{#MyAppDir}\winusb\*"; DestDir: "{app}\winusb"; Flags: ignoreversion re
 Name: "{app}"; Permissions: users-modify
 ; data klasörünü oluştur ve yazma izni ver (kayıt dosyaları için)
 Name: "{app}\data"; Permissions: users-full
+; winusb klasörünü oluştur
+Name: "{app}\winusb"; Permissions: users-full
 
 [Icons]
 ; Başlangıç menüsü
@@ -80,10 +82,17 @@ Filename: "icacls.exe"; \
     Parameters: """{app}""  /grant *S-1-5-32-545:(OI)(CI)F /T /Q"; \
     Flags: runhidden waituntilterminated; StatusMsg: "Klasör izinleri ayarlanıyor..."
 
-; OmniDriver Kurulumu (Zorunlu bileşen)
+; OmniDriver İndirme ve Kurulum (Opsiyonel/Setup sırasında indirilir)
+; Kullanıcı interneti yoksa hata alabilir, bu yüzden bu adımı dikkatli kullanıyoruz
+Filename: "powershell.exe"; \
+    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$url='https://github.com/Ahmet-zmn/OceanOptics_Project/raw/main/winusb/OmniDriver-2.80-win64-installer.exe'; $out='{app}\winusb\OmniDriver-2.80-win64-installer.exe'; if(!(Test-Path $out)){ Write-Host 'İndiriliyor...'; iwr -Uri $url -OutFile $out }"""; \
+    Flags: runhidden waituntilterminated; StatusMsg: "OmniDriver (USB Sürücüleri) GitHub'dan indiriliyor, lütfen bekleyin (125MB)..."; \
+    Check: not FileExists(ExpandConstant('{app}\winusb\OmniDriver-2.80-win64-installer.exe'))
+
+; OmniDriver Çalıştırma
 Filename: "{app}\winusb\OmniDriver-2.80-win64-installer.exe"; \
-    Description: "OmniDriver (USB Sürücüleri) Kuruluyor..."; \
-    Flags: waituntilterminated; StatusMsg: "OmniDriver kuruluyor, lütfen bekleyin..."
+    Description: "OmniDriver Sürücülerini Kur"; \
+    Flags: postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\winusb\OmniDriver-2.80-win64-installer.exe'))
 
 Filename: "{app}\{#MyAppExeName}"; \
     Description: "Uygulamayı şimdi başlat"; \

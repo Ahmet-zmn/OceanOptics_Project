@@ -83,5 +83,9 @@
     "msg_update_error": "Güncelleme kontrolü başarısız: {error}",
     "msg_no_measurements": "Kayıt dosyası bulunamadı.",
     "msg_downloading": "Güncelleme indiriliyor... Lütfen bekleyin.",
-    "msg_download_error": "İndirme hatası: {error}"
+    "msg_download_error": "İndirme hatası: {error}",
+    "btn_fetch_drivers": "Tüm Sürücüleri Getir",
+    "msg_downloading_drivers": "Tüm sürücü paketi indiriliyor (WinUSB)...",
+    "msg_downloading_omni": "OmniDriver yükleyicisi indiriliyor...",
+    "msg_drivers_success": "Sürücü paketi başarıyla indirildi ve çıkartıldı."
 }

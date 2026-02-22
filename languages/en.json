@@ -84,5 +84,9 @@
     "msg_update_error": "Update check failed: {error}",
     "msg_no_measurements": "No measurement file found.",
     "msg_downloading": "Downloading update... Please wait.",
-    "msg_download_error": "Download failed: {error}"
+    "msg_download_error": "Download failed: {error}",
+    "btn_fetch_drivers": "Fetch All Drivers",
+    "msg_downloading_drivers": "Downloading full driver pack (WinUSB)...",
+    "msg_downloading_omni": "Downloading OmniDriver installer...",
+    "msg_drivers_success": "Driver pack downloaded and extracted successfully."
 }

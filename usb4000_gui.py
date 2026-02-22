@@ -843,12 +843,17 @@ class DriverInstallationDialog:
         
         tk.Button(btn_frame, text=gui.get_text("menu_setup_drivers", "Install Driver"), command=self.install_selected, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), width=15).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text=gui.get_text("btn_install_sdk", "Install SDK"), command=self.install_sdk, bg="#2196F3", fg="white", font=("Arial", 10, "bold"), width=15).pack(side=tk.LEFT, padx=5)
+        
+        # New "Fetch All Drivers" button
+        tk.Button(btn_frame, text=gui.get_text("btn_fetch_drivers", "Fetch All Drivers"), command=self.fetch_all_drivers, bg="#FF9800", fg="white", font=("Arial", 10, "bold"), width=20).pack(side=tk.LEFT, padx=5)
+        
         tk.Button(btn_frame, text=gui.get_text("btn_close", "Close"), command=self.dialog.destroy, width=10).pack(side=tk.RIGHT, padx=5)
 
     def scan_drivers(self):
         winusb_path = os.path.join(os.getcwd(), "winusb")
         folders = ["winusb_driver", "winusb_driver_offline"]
         
+        self.drivers = []
         for folder in folders:
             folder_path = os.path.join(winusb_path, folder)
             if not os.path.exists(folder_path): continue
@@ -859,8 +864,43 @@ class DriverInstallationDialog:
                     full_path = os.path.join(folder_path, file)
                     self.drivers.append((display_name, full_path))
         
-        if not self.drivers:
-            self.listbox.insert(tk.END, "No drivers found in 'winusb' folder.")
+        # Refresh listbox
+        if hasattr(self, 'listbox'):
+            self.listbox.delete(0, tk.END)
+            for name, _ in self.drivers:
+                self.listbox.insert(tk.END, name)
+            if not self.drivers:
+                self.listbox.insert(tk.END, "No drivers found. Click 'Fetch All Drivers'.")
+
+    def fetch_all_drivers(self):
+        # Full WinUSB driver pack (usually as a zip on GitHub for easier download)
+        # For now, let's assume we fetch critical files individually or from a zip
+        zip_url = GITHUB_URL + "/raw/main/winusb/winusb_pack.zip" # User should create this zip or we point to raw files
+        winusb_path = os.path.join(os.getcwd(), "winusb")
+        target_zip = os.path.join(winusb_path, "winusb_pack.zip")
+        
+        if not os.path.exists(winusb_path): os.makedirs(winusb_path)
+
+        def do_download():
+            try:
+                # Progress feedback would be nice, reuse update download logic or simple retrieve
+                self.gui.set_busy_cursor(True)
+                urllib.request.urlretrieve(zip_url, target_zip)
+                
+                # Extract zip if possible (using zipfile)
+                import zipfile
+                with zipfile.ZipFile(target_zip, 'r') as zip_ref:
+                    zip_ref.extractall(winusb_path)
+                
+                os.remove(target_zip)
+                messagebox.showinfo("Success", self.gui.get_text("msg_drivers_success"))
+                self.gui.root.after(0, self.scan_drivers)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to download drivers: {e}")
+            finally:
+                self.gui.set_busy_cursor(False)
+
+        threading.Thread(target=do_download, daemon=True).start()
 
     def install_selected(self):
         idx = self.listbox.curselection()
@@ -868,49 +908,46 @@ class DriverInstallationDialog:
         
         _, inf_path = self.drivers[idx[0]]
         
-        confirm = messagebox.askyesno("Confirm", f"Attempting to install:\n{inf_path}\n\nThis REQUIRES Administrator rights. A Windows security prompt (UAC) will appear. Proceed?")
+        confirm = messagebox.askyesno("Confirm", f"Attempting to install:\n{inf_path}\n\nThis REQUIRES Administrator rights. Proceed?")
         if not confirm: return
         
         self.gui.set_busy_cursor(True)
         try:
-            # Using PowerShell to request elevation for pnputil
-            # Double quotes for path in ArgumentList
             ps_cmd = f'Start-Process -FilePath "pnputil" -ArgumentList "/add-driver", """{inf_path}""", "/install" -Verb RunAs -Wait'
             cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
+            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
             
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000) # CREATE_NO_WINDOW = 0x08000000
-            
-            # Since Start-Process doesn't return the exit code of the sub-process easily to ps itself without more complex piping,
-            # we check if PS itself ran ok. If the user clicks "No" on UAC, ps might return error or 0 depending on version.
             if result.returncode == 0:
-                messagebox.showinfo("Success", self.gui.get_text("msg_install_success", "Driver installation triggered. If you approved the prompt, it should be installed."))
+                messagebox.showinfo("Success", self.gui.get_text("msg_install_success"))
             else:
-                messagebox.showwarning("Notice", f"PowerShell returned code {result.returncode}.\n{result.stderr}")
+                messagebox.showwarning("Notice", f"PNPUtil returned {result.returncode}")
         except Exception as e:
-            messagebox.showerror("Error", self.gui.get_text("msg_install_fail", f"Installation failed: {e}").format(error=str(e)))
+            messagebox.showerror("Error", str(e))
         finally:
             self.gui.set_busy_cursor(False)
 
     def install_sdk(self):
         installer_path = os.path.join(os.getcwd(), "winusb", "OmniDriver-2.80-win64-installer.exe")
-        if not os.path.exists(installer_path):
-            messagebox.showerror("Error", f"Installer not found: {installer_path}")
-            return
-            
-        confirm = messagebox.askyesno("Confirm", f"Attempting to run:\n{installer_path}\n\nThis REQUIRES Administrator rights. Proceed?")
-        if not confirm: return
         
-        self.gui.set_busy_cursor(True)
-        try:
-            # Run installer with elevation
-            ps_cmd = f'Start-Process -FilePath "{installer_path}" -Verb RunAs'
-            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
-            subprocess.run(cmd, creationflags=0x08000000)
-            messagebox.showinfo("Success", self.gui.get_text("msg_install_success", "Installer started. Please follow the instructions in the installer window."))
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-        finally:
-            self.gui.set_busy_cursor(False)
+        def run_install():
+            try:
+                self.gui.set_busy_cursor(True)
+                if not os.path.exists(installer_path):
+                    # Download it from GitHub
+                    omni_url = GITHUB_URL + "/raw/main/winusb/OmniDriver-2.80-win64-installer.exe"
+                    messagebox.showinfo("Download", self.gui.get_text("msg_downloading_omni"))
+                    urllib.request.urlretrieve(omni_url, installer_path)
+                
+                ps_cmd = f'Start-Process -FilePath "{installer_path}" -Verb RunAs'
+                cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
+                subprocess.run(cmd, creationflags=0x08000000)
+                messagebox.showinfo("Success", self.gui.get_text("msg_install_success"))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+            finally:
+                self.gui.set_busy_cursor(False)
+
+        threading.Thread(target=run_install, daemon=True).start()
 
 class WavelengthMonitor:
     def __init__(self, parent, gui):

@@ -16,8 +16,11 @@ include_files = [
     (os.path.join(BASE_DIR, "oceandirect"), "oceandirect"),
     # Dil dosyalari
     (os.path.join(BASE_DIR, "languages"), "languages"),
-    # Winusb suruculer
-    (os.path.join(BASE_DIR, "winusb"), "winusb"),
+    # Winusb suruculer (Sadece USB4000 için gerekli olanlar)
+    (os.path.join(BASE_DIR, "winusb", "winusb_driver", "OOI_USB4000.inf"), os.path.join("winusb", "winusb_driver", "OOI_USB4000.inf")),
+    (os.path.join(BASE_DIR, "winusb", "winusb_driver", "OOI_USB4000.cat"), os.path.join("winusb", "winusb_driver", "OOI_USB4000.cat")),
+    (os.path.join(BASE_DIR, "winusb", "winusb_driver", "amd64"), os.path.join("winusb", "winusb_driver", "amd64")),
+    (os.path.join(BASE_DIR, "winusb", "winusb_driver", "x86"), os.path.join("winusb", "winusb_driver", "x86")),
 ]
 
 # Tcl/Tk dosyalarını bul ve dahil et (init.tcl hatası için)
