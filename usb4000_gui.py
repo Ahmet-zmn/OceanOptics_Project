@@ -273,35 +273,81 @@ class OceanOpticsGUI:
         threading.Thread(target=run_check, daemon=True).start()
 
     def prompt_update(self, new_v):
-        if messagebox.askyesno(self.get_text("menu_check_update"), self.get_text("msg_update_found").format(version=new_v)):
+        # Professional update dialog
+        update_win = tk.Toplevel(self.root)
+        update_win.title(self.get_text("menu_check_update"))
+        update_win.geometry("400x200")
+        update_win.resizable(False, False)
+        update_win.transient(self.root)
+        update_win.grab_set()
+
+        # Center on screen
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        update_win.geometry(f"+{x}+{y}")
+
+        msg = self.get_text("msg_update_found").format(version=new_v)
+        tk.Label(update_win, text=msg, pady=20, wraplength=350).pack()
+        
+        btn_frame = tk.Frame(update_win)
+        btn_frame.pack(pady=10)
+
+        def on_update():
+            update_win.destroy()
             self.download_and_install_update()
 
+        tk.Button(btn_frame, text="Update Now", command=on_update, width=15, bg="#0078D7", fg="white").pack(side=tk.LEFT, padx=10)
+        tk.Button(btn_frame, text="Later", command=update_win.destroy, width=15).pack(side=tk.LEFT, padx=10)
+
     def download_and_install_update(self):
-        # Installer URL
         exe_url = GITHUB_URL + "/raw/main/dist/OceanOptics_USB4000_Setup.exe"
         temp_dir = os.environ.get("TEMP", os.getcwd())
         target_path = os.path.join(temp_dir, "OceanOptics_USB4000_Setup_Update.exe")
         
-        # Show status
         status_win = tk.Toplevel(self.root)
         status_win.title(self.get_text("menu_check_update"))
-        status_win.geometry("300x100")
+        status_win.geometry("400x150")
+        status_win.resizable(False, False)
         status_win.transient(self.root)
         status_win.grab_set()
         
-        tk.Label(status_win, text=self.get_text("msg_downloading"), pady=20).pack()
-        self.root.update_idletasks()
+        # Center on screen
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 75
+        status_win.geometry(f"+{x}+{y}")
+
+        status_label = tk.Label(status_win, text=self.get_text("msg_downloading"), pady=10)
+        status_label.pack()
+
+        progress = ttk.Progressbar(status_win, orient=tk.HORIZONTAL, length=300, mode='determinate')
+        progress.pack(pady=10)
+
+        cancel_btn = tk.Button(status_win, text="Cancel", command=lambda: setattr(self, '_stop_update', True))
+        cancel_btn.pack(pady=5)
+        
+        self._stop_update = False
+
+        def progress_hook(count, block_size, total_size):
+            if hasattr(self, '_stop_update') and self._stop_update:
+                raise Exception("Download cancelled by user")
+            
+            if total_size > 0:
+                percent = int(count * block_size * 100 / total_size)
+                if percent > 100: percent = 100
+                self.root.after(0, lambda: progress.config(value=percent))
+                self.root.after(0, lambda: status_label.config(text=f"{self.get_text('msg_downloading')} ({percent}%)"))
 
         def do_download():
             try:
-                urllib.request.urlretrieve(exe_url, target_path)
+                urllib.request.urlretrieve(exe_url, target_path, reporthook=progress_hook)
                 status_win.destroy()
                 # Run installer and exit
                 subprocess.Popen(f'"{target_path}"', shell=True)
                 self.on_close()
             except Exception as e:
                 status_win.destroy()
-                messagebox.showerror("Error", self.get_text("msg_download_error").format(error=str(e)))
+                if "cancelled" not in str(e).lower():
+                    messagebox.showerror("Error", self.get_text("msg_download_error").format(error=str(e)))
 
         threading.Thread(target=do_download, daemon=True).start()
 
