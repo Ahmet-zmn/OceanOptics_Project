@@ -46,7 +46,7 @@
     "btn_origin_manual": "Select Path Manually",
     "err_origin_not_found": "Origin application not found. Please select manually.",
     "msg_origin_success": "Origin application identified: {version}",
-    "msg_about_text": "Ocean Optics USB4000 Spectrometer Control Software\nVersion 1.0.0\nTransmission Workflow",
+    "msg_about_text": "Ocean Optics USB4000 Spectrometer Control Software\nDeveloped by Ahmet ÖZMEN\nVersion {version}\nGitHub: {url}",
     "plot_title": "Spectrum",
     "plot_xlabel": "Wavelength (nm)",
     "plot_ylabel": "Intensity",

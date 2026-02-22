@@ -45,7 +45,7 @@
     "btn_origin_manual": "Dosya Yolunu El ile Seç",
     "err_origin_not_found": "Origin uygulaması bulunamadı. Lütfen el ile seçim yapın.",
     "msg_origin_success": "Origin application başarıyla tanımlandı: {version}",
-    "msg_about_text": "Ocean Optics USB4000 Spektrometre Kontrol Yazılımı\nSürüm 1.0.0\nTransmission (Geçirgenlik) İş Akışı",
+    "msg_about_text": "Ocean Optics USB4000 Spektrometre Kontrol Yazılımı\nHazırlayan: Ahmet ÖZMEN\nSürüm {version}\nGitHub: {url}",
     "plot_title": "Spektrum",
     "plot_xlabel": "Dalga Boyu (nm)",
     "plot_ylabel": "Yoğunluk (Intensity)",

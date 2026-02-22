@@ -12,7 +12,6 @@ import urllib.request
 
 APP_VERSION = "1.0.3"
 GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
-GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
 
 # EXE (cx_Freeze) modunda çalışırken exe'nin klasörünü sys.path'e ekle
 # Böylece 'oceandirect', 'languages' vb. yan klasörler bulunabilir
@@ -509,7 +508,31 @@ class OceanOpticsGUI:
         else: self.status_label.config(text=self.get_text("lbl_status_dark"))
         self.ax.set_xlabel(self.get_text("plot_xlabel")); self.refresh_plot_visibility(); self.canvas.draw_idle()
 
-    def show_about(self): messagebox.showinfo(self.get_text("menu_about"), self.get_text("msg_about_text"))
+    def show_about(self):
+        about_win = tk.Toplevel(self.root)
+        about_win.title(self.get_text("menu_about"))
+        about_win.geometry("400x200")
+        about_win.resizable(False, False)
+        about_win.transient(self.root)
+        about_win.grab_set()
+
+        # Center
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        about_win.geometry(f"+{x}+{y}")
+
+        tk.Label(about_win, text=self.get_text("title"), font=("Arial", 11, "bold"), pady=10).pack()
+        
+        info_text = f"Developed by: Ahmet ÖZMEN\nVersion: {APP_VERSION}"
+        if self.lang == "tr": info_text = f"Hazırlayan: Ahmet ÖZMEN\nSürüm: {APP_VERSION}"
+        
+        tk.Label(about_win, text=info_text, pady=5).pack()
+        
+        link = tk.Label(about_win, text=GITHUB_URL, fg="blue", cursor="hand2", pady=10)
+        link.pack()
+        link.bind("<Button-1>", lambda e: subprocess.Popen(f'start {GITHUB_URL}', shell=True))
+
+        tk.Button(about_win, text=self.get_text("btn_close"), command=about_win.destroy, width=10).pack(pady=10)
 
     def setup_ui(self):
         control_panel = tk.Frame(self.root, pady=10); control_panel.pack(side=tk.TOP, fill=tk.X)
