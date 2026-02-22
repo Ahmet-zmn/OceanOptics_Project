@@ -68,6 +68,7 @@ class OceanOpticsGUI:
         self.omni_url = "" # Dynamic OmniDriver URL from GitHub
         self.lang = "tr"
         self._stop_update = False
+        self._stop_download = False
         self.record_count = 0 
         self.save_path = ""
         self.log_format = "Timestamp"
@@ -309,52 +310,71 @@ class OceanOpticsGUI:
         temp_dir = os.environ.get("TEMP", os.getcwd())
         target_path = os.path.join(temp_dir, "OceanOptics_USB4000_Setup_Update.exe")
         
+        def success():
+            subprocess.Popen(f'"{target_path}"', shell=True)
+            self.on_close()
+
+        self.start_download(exe_url, target_path, self.get_text("menu_check_update"), success)
+
+    def start_download(self, url, target_path, title, success_callback=None):
+        """Genel amaçlı dosya indirme yardımcısı (İlerleme çubuklu)"""
+        if not url:
+            messagebox.showerror("Error", "URL not found.")
+            return
+
         status_win = tk.Toplevel(self.root)
-        status_win.title(self.get_text("menu_check_update"))
-        status_win.geometry("400x150")
+        status_win.title(title)
+        status_win.geometry("400x160")
         status_win.resizable(False, False)
         status_win.transient(self.root)
         status_win.grab_set()
-        
-        # Center on screen
+
+        # Center
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 75
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 80
         status_win.geometry(f"+{x}+{y}")
 
-        status_label = tk.Label(status_win, text=self.get_text("msg_downloading"), pady=10)
+        status_label = tk.Label(status_win, text=self.get_text("msg_downloading"), pady=10, wraplength=350)
         status_label.pack()
 
         progress = ttk.Progressbar(status_win, orient=tk.HORIZONTAL, length=300, mode='determinate')
         progress.pack(pady=10)
 
-        cancel_btn = tk.Button(status_win, text="Cancel", command=lambda: setattr(self, '_stop_update', True))
+        self._stop_download = False
+        def on_cancel():
+            self._stop_download = True
+            status_win.destroy()
+
+        cancel_btn = tk.Button(status_win, text="Cancel", command=on_cancel)
         cancel_btn.pack(pady=5)
-        
-        self._stop_update = False
 
         def progress_hook(count, block_size, total_size):
-            if hasattr(self, '_stop_update') and self._stop_update:
-                raise Exception("Download cancelled by user")
-            
+            if hasattr(self, '_stop_download') and self._stop_download:
+                raise Exception("CANCEL_DL")
             if total_size > 0:
                 percent = int(count * block_size * 100 / total_size)
                 if percent > 100: percent = 100
-                self.root.after(0, lambda: progress.config(value=percent))
-                self.root.after(0, lambda: status_label.config(text=f"{self.get_text('msg_downloading')} ({percent}%)"))
+                self.root.after(0, lambda p=percent: progress.config(value=p))
+                self.root.after(0, lambda p=percent: status_label.config(text=f"{self.get_text('msg_downloading')} ({p}%)"))
 
-        def do_download():
+        def run_dl():
             try:
-                urllib.request.urlretrieve(exe_url, target_path, reporthook=progress_hook)
-                status_win.destroy()
-                # Run installer and exit
-                subprocess.Popen(f'"{target_path}"', shell=True)
-                self.on_close()
+                # User-Agent handling for some servers
+                opener = urllib.request.build_opener()
+                opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+                urllib.request.install_opener(opener)
+                
+                urllib.request.urlretrieve(url, target_path, reporthook=progress_hook)
+                self.root.after(0, status_win.destroy)
+                if success_callback:
+                    self.root.after(0, lambda: success_callback())
             except Exception as e:
-                status_win.destroy()
-                if "cancelled" not in str(e).lower():
-                    messagebox.showerror("Error", self.get_text("msg_download_error").format(error=str(e)))
+                self.root.after(0, status_win.destroy)
+                if "CANCEL_DL" not in str(e):
+                    err_msg = self.get_text("msg_download_error", "Download error: {error}").format(error=str(e))
+                    self.root.after(0, lambda m=err_msg: messagebox.showerror("Error", m))
 
-        threading.Thread(target=do_download, daemon=True).start()
+        threading.Thread(target=run_dl, daemon=True).start()
 
     def change_language(self, lang):
         self.lang = lang; self.save_config()
@@ -876,19 +896,14 @@ class DriverInstallationDialog:
 
     def fetch_all_drivers(self):
         # Full WinUSB driver pack (usually as a zip on GitHub for easier download)
-        # For now, let's assume we fetch critical files individually or from a zip
-        zip_url = GITHUB_URL + "/raw/main/winusb/winusb_pack.zip" # User should create this zip or we point to raw files
+        zip_url = GITHUB_URL + "/raw/main/winusb/winusb_pack.zip"
         winusb_path = os.path.join(os.getcwd(), "winusb")
         target_zip = os.path.join(winusb_path, "winusb_pack.zip")
         
         if not os.path.exists(winusb_path): os.makedirs(winusb_path)
 
-        def do_download():
+        def on_success():
             try:
-                # Progress feedback would be nice, reuse update download logic or simple retrieve
-                self.gui.set_busy_cursor(True)
-                urllib.request.urlretrieve(zip_url, target_zip)
-                
                 # Extract zip into winusb_driver subdirectory
                 winusb_driver_path = os.path.join(winusb_path, "winusb_driver")
                 if not os.path.exists(winusb_driver_path): os.makedirs(winusb_driver_path)
@@ -901,11 +916,9 @@ class DriverInstallationDialog:
                 messagebox.showinfo("Success", self.gui.get_text("msg_drivers_success"))
                 self.gui.root.after(0, self.scan_drivers)
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to download drivers: {e}")
-            finally:
-                self.gui.set_busy_cursor(False)
+                messagebox.showerror("Error", f"Failed to extract drivers: {e}")
 
-        threading.Thread(target=do_download, daemon=True).start()
+        self.gui.start_download(zip_url, target_zip, self.gui.get_text("msg_downloading_drivers"), on_success)
 
     def install_selected(self):
         idx = self.listbox.curselection()
@@ -934,28 +947,26 @@ class DriverInstallationDialog:
     def install_sdk(self):
         installer_path = os.path.join(os.getcwd(), "winusb", "OmniDriver-2.80-win64-installer.exe")
         
-        def run_install():
-            try:
-                self.gui.set_busy_cursor(True)
-                if not os.path.exists(installer_path):
-                    # Use URL from version.json if fetched, else fallback to hardcoded
-                    omni_url = getattr(self.gui, 'omni_url', "")
-                    if not omni_url:
-                        omni_url = "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe"
-                    
-                    messagebox.showinfo("Download", self.gui.get_text("msg_downloading_omni"))
-                    urllib.request.urlretrieve(omni_url, installer_path)
-                
+        if os.path.exists(installer_path):
+            # Just run it
+            confirm = messagebox.askyesno("Confirm", f"Found installer. Run now?\n{installer_path}")
+            if confirm:
                 ps_cmd = f'Start-Process -FilePath "{installer_path}" -Verb RunAs'
-                cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
-                subprocess.run(cmd, creationflags=0x08000000)
-                messagebox.showinfo("Success", self.gui.get_text("msg_install_success"))
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
-            finally:
-                self.gui.set_busy_cursor(False)
+                subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd], creationflags=0x08000000)
+            return
 
-        threading.Thread(target=run_install, daemon=True).start()
+        # Use URL from version.json if fetched, else fallback to hardcoded
+        omni_url = getattr(self.gui, 'omni_url', "")
+        if not omni_url:
+            omni_url = "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe"
+        
+        def on_success():
+            ps_cmd = f'Start-Process -FilePath "{installer_path}" -Verb RunAs'
+            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
+            subprocess.run(cmd, creationflags=0x08000000)
+            messagebox.showinfo("Success", self.gui.get_text("msg_install_success"))
+
+        self.gui.start_download(omni_url, installer_path, self.gui.get_text("msg_downloading_omni"), on_success)
 
 class WavelengthMonitor:
     def __init__(self, parent, gui):
