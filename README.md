@@ -12,32 +12,27 @@ A portable, user-friendly GUI application for controlling the Ocean Optics USB40
 
 ## Installation
 
-### Prerequisites
-- Windows 10/11
-- Python 3.10+ (for building from source)
-
-### Portable Use
-This application is designed to be portable. Simply download the latest release and run `USB4000_Spektrometre.exe`.
+### The Easiest Way
+1. Go to the `dist` folder in this repository.
+2. Download and run `OceanOptics_USB4000_Setup.exe`.
+3. Follow the on-screen instructions to install the application.
 
 ### From Source
 1. Clone the repository:
    ```bash
-   git clone https://github.com/eemah/OceanOptics_Project.git
+   git clone https://github.com/Ahmet-zmn/OceanOptics_Project.git
    ```
-2. Run `kurulum.bat` to set up the environment and dependencies.
+2. Install dependencies (requires Python 3.10+):
+   ```bash
+   pip install numpy matplotlib
+   ```
 3. Launch the application:
    ```bash
    python usb4000_gui.py
    ```
 
-## Building the Executable
-To create a standalone EXE:
-1. Ensure `cx_Freeze` and `Inno Setup` are installed.
-2. Run `exe_yap.bat`.
-3. The resulting setup file will be in the `dist` folder.
-
 ## Authors
-- **eemah** - [GitHub](https://github.com/eemah)
+- **Ahmet-zmn** - [GitHub](https://github.com/Ahmet-zmn)
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.

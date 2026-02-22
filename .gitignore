@@ -9,7 +9,6 @@ __pycache__/
 env/
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -24,10 +23,11 @@ wheels/
 *.egg
 
 # Installer & Build
-build/
-dist/
-*.exe
-*.msi
+# dist/ is now included for distribution
+# *.exe is now included for distribution
+
+# Scripts
+*.bat
 
 # Project Specific
 config.json
