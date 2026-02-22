@@ -10,7 +10,8 @@ import subprocess
 from datetime import datetime
 import urllib.request
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.2"
+GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
 GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
 
 # EXE (cx_Freeze) modunda çalışırken exe'nin klasörünü sys.path'e ekle
@@ -65,6 +66,8 @@ class OceanOpticsGUI:
         self.lang_dir = "languages"
         self.translations = {}
         self.lang = "tr"
+        self._stop_update = False
+        self.record_count = 0 
         self.save_path = ""
         self.log_format = "Timestamp"
         self.plot_styles = {}
@@ -770,10 +773,10 @@ class OceanOpticsGUI:
             target_file = os.path.abspath(target_file)
             try:
                 if self.origin_exe and os.path.exists(self.origin_exe):
-                    # OriginPro'yu dosya parametresiyle başlat (Shell=True ve tırnaklı yollar Windows'ta daha kararlıdır)
-                    # LabTalk -oc "open -w ..." komutu verinin doğrudan workbook olarak gelmesini sağlar
-                    cmd = f'"{self.origin_exe}" -oc "open -w \"{target_file}\""'
-                    subprocess.Popen(cmd, shell=True)
+                    # OriginPro'yu liste olarak başlatmak (shell=False) tırnak sorunlarını otomatik çözer
+                    # LabTalk komutunu tek bir argüman olarak geçiyoruz
+                    labtalk_cmd = f'open -w "{target_file}"'
+                    subprocess.Popen([self.origin_exe, "-oc", labtalk_cmd])
                 else:
                     os.startfile(target_file)
             except Exception as e: 

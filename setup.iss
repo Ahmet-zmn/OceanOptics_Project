@@ -3,7 +3,7 @@
 ; ============================================================
 
 #define MyAppName      "OceanOptics USB4000 Spektrometre"
-#define MyAppVersion   "1.0.0"
+#define MyAppVersion   "1.0.2"
 #define MyAppPublisher "OceanOptics"
 #define MyAppExeName   "USB4000_Spektrometre.exe"
 #define MyAppDir       "build\exe.win-amd64-3.10"
