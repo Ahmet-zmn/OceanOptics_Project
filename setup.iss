@@ -57,6 +57,9 @@ Source: "{#MyAppDir}\share\*"; DestDir: "{app}\share"; Flags: ignoreversion recu
 ; OceanDirect SDK
 Source: "{#MyAppDir}\oceandirect\*"; DestDir: "{app}\oceandirect"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; WinUSB & OmniDriver Installers
+Source: "{#MyAppDir}\winusb\*"; DestDir: "{app}\winusb"; Flags: ignoreversion recursesubdirs createallsubdirs
+
 [Dirs]
 ; Ana kurulum klasörüne yazma izni ver (config.json için)
 Name: "{app}"; Permissions: users-modify
@@ -76,6 +79,11 @@ Name: "{autodesktop}\{#MyAppName}";     Filename: "{app}\{#MyAppExeName}"; Tasks
 Filename: "icacls.exe"; \
     Parameters: """{app}""  /grant *S-1-5-32-545:(OI)(CI)F /T /Q"; \
     Flags: runhidden waituntilterminated; StatusMsg: "Klasör izinleri ayarlanıyor..."
+
+; OmniDriver Kurulumu (Zorunlu bileşen)
+Filename: "{app}\winusb\OmniDriver-2.80-win64-installer.exe"; \
+    Description: "OmniDriver (USB Sürücüleri) Kuruluyor..."; \
+    Flags: waituntilterminated; StatusMsg: "OmniDriver kuruluyor, lütfen bekleyin..."
 
 Filename: "{app}\{#MyAppExeName}"; \
     Description: "Uygulamayı şimdi başlat"; \
