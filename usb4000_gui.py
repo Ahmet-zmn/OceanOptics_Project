@@ -10,8 +10,18 @@ import subprocess
 from datetime import datetime
 import urllib.request
 
-APP_VERSION = "1.0.3"
 GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
+
+# version.json dosyasindan surum bilgisini oku
+def _load_app_version():
+    try:
+        vf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.json")
+        with open(vf, "r", encoding="utf-8") as f:
+            return json.load(f).get("version", "1.0.0")
+    except Exception:
+        return "1.0.0"
+
+APP_VERSION = _load_app_version()
 
 # EXE (cx_Freeze) modunda çalışırken exe'nin klasörünü sys.path'e ekle
 # Böylece 'oceandirect', 'languages' vb. yan klasörler bulunabilir
@@ -267,49 +277,60 @@ class OceanOpticsGUI:
         
         def run_check():
             try:
-                with urllib.request.urlopen(v_url, timeout=5) as response:
+                req = urllib.request.Request(v_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=10) as response:
                     data = json.loads(response.read().decode())
                     server_v = data.get("version", "1.0.0")
+                    self._update_exe_url = data.get("update_url", "")
                     self.omni_url = data.get("omni_driver_url", "")
                     
                     if server_v > APP_VERSION:
                         self.root.after(0, lambda: self.prompt_update(server_v))
                     elif manual:
-                        self.root.after(0, lambda: messagebox.showinfo(self.get_text("menu_check_update"), self.get_text("msg_no_update", "Your software is up to date.")))
+                        msg = self.get_text("msg_up_to_date", "Software is up to date (Version: {version})").format(version=APP_VERSION)
+                        self.root.after(0, lambda: messagebox.showinfo(self.get_text("menu_check_update"), msg))
             except Exception as e:
-                if manual: self.root.after(0, lambda: messagebox.showerror("Error", self.get_text("msg_update_error").format(error=str(e))))
+                if manual:
+                    self.root.after(0, lambda: messagebox.showerror("Error", self.get_text("msg_update_error").format(error=str(e))))
         
         threading.Thread(target=run_check, daemon=True).start()
 
     def prompt_update(self, new_v):
-        # Professional update dialog
+        """Güncelleme bulundu penceresi"""
         update_win = tk.Toplevel(self.root)
         update_win.title(self.get_text("menu_check_update"))
-        update_win.geometry("400x200")
+        update_win.geometry("420x200")
         update_win.resizable(False, False)
         update_win.transient(self.root)
         update_win.grab_set()
 
-        # Center on screen
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        # Ekranda ortala
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 210
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
         update_win.geometry(f"+{x}+{y}")
 
-        msg = self.get_text("msg_update_found").format(version=new_v)
-        tk.Label(update_win, text=msg, pady=20, wraplength=350).pack()
+        msg = self.get_text("msg_update_found", "New version available: {version}").format(version=new_v)
+        tk.Label(update_win, text=msg, pady=20, wraplength=380, font=("Segoe UI", 10)).pack()
         
         btn_frame = tk.Frame(update_win)
         btn_frame.pack(pady=10)
 
         def on_update():
             update_win.destroy()
-            self.download_and_install_update()
+            self.download_and_install_update(new_v)
 
-        tk.Button(btn_frame, text="Update Now", command=on_update, width=15, bg="#0078D7", fg="white").pack(side=tk.LEFT, padx=10)
-        tk.Button(btn_frame, text="Later", command=update_win.destroy, width=15).pack(side=tk.LEFT, padx=10)
+        tk.Button(btn_frame, text=self.get_text("btn_update_now", "Update Now"), command=on_update,
+                  width=15, bg="#0078D7", fg="white", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
+        tk.Button(btn_frame, text=self.get_text("btn_update_later", "Later"), command=update_win.destroy,
+                  width=15).pack(side=tk.LEFT, padx=10)
 
-    def download_and_install_update(self):
-        exe_url = GITHUB_URL + "/raw/main/dist/OceanOptics_USB4000_Setup.exe"
+    def download_and_install_update(self, new_v):
+        """GitHub Releases'ten güncel kurulum EXE'sini indir ve çalıştır."""
+        # Önce version.json'daki update_url'yi dene, yoksa GitHub Releases URL'si oluştur
+        exe_url = getattr(self, '_update_exe_url', '') or ''
+        if not exe_url:
+            exe_url = GITHUB_URL + f"/releases/download/v{new_v}/OceanOptics_USB4000_Setup.exe"
+        
         temp_dir = os.environ.get("TEMP", os.getcwd())
         target_path = os.path.join(temp_dir, "OceanOptics_USB4000_Setup_Update.exe")
         

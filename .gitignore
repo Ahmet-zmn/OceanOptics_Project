@@ -26,9 +26,12 @@ wheels/
 # dist/
 !dist/*.exe
 winusb/*.exe
+offline_packages/
+Output/
 
 # Scripts
 *.bat
+!launch_app.bat
 
 # Project Specific
 config.json
