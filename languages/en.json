@@ -5,6 +5,7 @@
     "menu_save_path": "Save Location",
     "menu_rec_settings": "Recording Settings",
     "menu_log_format": "Data Format",
+    "log_elapsed": "Elapsed Time (0, 0.5, 1...)",
     "log_timestamp": "Timestamp (ISO)",
     "log_sequential": "Sequence (1, 2, 3...)",
     "menu_help": "Help",

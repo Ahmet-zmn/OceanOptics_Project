@@ -5,6 +5,7 @@
     "menu_save_path": "Kayıt Konumu",
     "menu_rec_settings": "Kayıt Ayarları",
     "menu_log_format": "Veri Formatı",
+    "log_elapsed": "Geçen Süre (0, 0.5, 1...)",
     "log_timestamp": "Zaman Damgası (ISO)",
     "log_sequential": "Sıralı Sayı (1, 2, 3...)",
     "menu_help": "Yardım",

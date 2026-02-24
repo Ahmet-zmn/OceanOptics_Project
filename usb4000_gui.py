@@ -203,16 +203,16 @@ class OceanOpticsGUI:
                     config = json.load(f)
                     self.lang = config.get("lang", "tr")
                     self.save_path = config.get("save_path", default_save_path)
-                    self.log_format = config.get("log_format", "Timestamp")
+                    self.log_format = config.get("log_format", "ElapsedTime")
                     self.plot_styles = config.get("plot_styles", default_styles)
                     self.origin_exe = config.get("origin_exe", None)
                     self.origin_version = config.get("origin_version", "OriginLab")
                     self.last_saved_file = config.get("last_saved_file", None)
             except: 
-                self.lang = "tr"; self.save_path = default_save_path; self.log_format = "Timestamp"; self.plot_styles = default_styles
+                self.lang = "tr"; self.save_path = default_save_path; self.log_format = "ElapsedTime"; self.plot_styles = default_styles
                 self.origin_exe = None; self.origin_version = "OriginLab"
         else: 
-            self.lang = "tr"; self.save_path = default_save_path; self.log_format = "Timestamp"; self.plot_styles = default_styles
+            self.lang = "tr"; self.save_path = default_save_path; self.log_format = "ElapsedTime"; self.plot_styles = default_styles
             self.origin_exe = None; self.origin_version = "OriginLab"
             self.save_config()
         if self.lang not in self.translations: self.lang = list(self.translations.keys())[0] if self.translations else "tr"
@@ -250,6 +250,7 @@ class OceanOpticsGUI:
         self.rec_settings_menu = tk.Menu(self.settings_menu, tearoff=0)
         self.rec_settings_menu.add_command(label=self.get_text("menu_save_path"), command=self.change_save_path)
         self.format_menu = tk.Menu(self.rec_settings_menu, tearoff=0)
+        self.format_menu.add_radiobutton(label=self.get_text("log_elapsed"), variable=self.log_format_var, value="ElapsedTime", command=self.change_log_format)
         self.format_menu.add_radiobutton(label=self.get_text("log_timestamp"), variable=self.log_format_var, value="Timestamp", command=self.change_log_format)
         self.format_menu.add_radiobutton(label=self.get_text("log_sequential"), variable=self.log_format_var, value="Sequential", command=self.change_log_format)
         self.rec_settings_menu.add_cascade(label=self.get_text("menu_log_format"), menu=self.format_menu)
@@ -325,20 +326,49 @@ class OceanOpticsGUI:
                   width=15).pack(side=tk.LEFT, padx=10)
 
     def download_and_install_update(self, new_v):
-        """GitHub Releases'ten güncel kurulum EXE'sini indir ve çalıştır."""
-        # Önce version.json'daki update_url'yi dene, yoksa GitHub Releases URL'si oluştur
+        """GitHub veya Google Drive üzerinden güncel kurulum EXE'sini indir ve çalıştır."""
         exe_url = getattr(self, '_update_exe_url', '') or ''
+        
+        # Eğer link boşsa veya varsayılan GitHub linki gerekiyorsa
         if not exe_url:
             exe_url = GITHUB_URL + f"/releases/download/v{new_v}/OceanOptics_USB4000_Setup.exe"
+            
+        # Google Drive linki kontrolü ve dönüştürme (view -> uc?export=download)
+        if "drive.google.com" in exe_url:
+            if "/file/d/" in exe_url:
+                file_id = exe_url.split("/file/d/")[1].split("/")[0]
+                exe_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+            elif "id=" not in exe_url and "/d/" in exe_url:
+                # Alternatif format denemesi
+                parts = exe_url.split("/")
+                for i, p in enumerate(parts):
+                    if p == "d" and i+1 < len(parts):
+                        file_id = parts[i+1]
+                        exe_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+                        break
         
         temp_dir = os.environ.get("TEMP", os.getcwd())
         target_path = os.path.join(temp_dir, "OceanOptics_USB4000_Setup_Update.exe")
         
         def success():
-            subprocess.Popen(f'"{target_path}"', shell=True)
-            self.on_close()
+            try:
+                subprocess.Popen(f'"{target_path}"', shell=True)
+                self.on_close()
+            except Exception as e:
+                self.log_update_error(f"Installation trigger failed: {str(e)}")
+                messagebox.showerror("Error", f"Update installer could not be started: {e}")
 
         self.start_download(exe_url, target_path, self.get_text("menu_check_update"), success)
+
+    def log_update_error(self, message):
+        """Güncelleme hatalarını dosyaya kaydeder."""
+        try:
+            log_path = os.path.join(_BASE_DIR, "update_error_log.txt")
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+        except:
+            pass
 
     def start_download(self, url, target_path, title, success_callback=None):
         """Genel amaçlı dosya indirme yardımcısı (İlerleme çubuklu)"""
@@ -396,6 +426,7 @@ class OceanOpticsGUI:
                 self.root.after(0, status_win.destroy)
                 if "CANCEL_DL" not in str(e):
                     err_msg = self.get_text("msg_download_error", "Download error: {error}").format(error=str(e))
+                    self.log_update_error(f"Download error from {url}: {str(e)}")
                     self.root.after(0, lambda m=err_msg: messagebox.showerror("Error", m))
 
         threading.Thread(target=run_dl, daemon=True).start()
@@ -781,7 +812,9 @@ class OceanOpticsGUI:
             start_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); csv_filename = f"{self.fname}_{self.mode}_{start_timestamp}.csv"; full_path = os.path.join(self.save_path, csv_filename); self.last_saved_file = full_path; self.save_config()
             if not os.path.exists(self.save_path): os.makedirs(self.save_path)
             try:
-                file = open(full_path, mode='w', newline=''); writer = csv.writer(file); label = "Index" if self.log_format == "Sequential" else "Timestamp"; writer.writerow([label] + [f"{w:.2f}" for w in self.wavelengths])
+                file = open(full_path, mode='w', newline=''); writer = csv.writer(file)
+                label = "Time (s)" if self.log_format == "ElapsedTime" else ("Index" if self.log_format == "Sequential" else "Timestamp")
+                writer.writerow([label] + [f"{w:.2f}" for w in self.wavelengths])
             except Exception as e: print(f"File error: {e}"); return
         next_sample_time = time.time()
         while not self.stop_requested:
@@ -801,7 +834,16 @@ class OceanOpticsGUI:
                             denom = (self.ref_spectrum - self.dark_spectrum); denom[denom == 0] = 1; trans_val = ((spectrum - self.dark_spectrum) / denom) * 100.0
                         plot_data = trans_val if (self.view_mode == "Transmission" and trans_val is not None) else intensity_val
                         if self.is_recording and writer:
-                            index_counter += 1; key = str(index_counter) if self.log_format == "Sequential" else datetime.now().isoformat(); save_data = trans_val if (self.mode == "Transmission" and trans_val is not None) else intensity_val; writer.writerow([key] + list(save_data)); file.flush()
+                            index_counter += 1
+                            if self.log_format == "ElapsedTime":
+                                key = f"{(index_counter - 1) * self.t_space:.3f}"
+                            elif self.log_format == "Sequential":
+                                key = str(index_counter)
+                            else:
+                                key = datetime.now().isoformat()
+                            
+                            save_data = trans_val if (self.mode == "Transmission" and trans_val is not None) else intensity_val
+                            writer.writerow([key] + list(save_data)); file.flush()
                         self.root.after(0, self.update_plot, plot_data)
                         # Broadcast to monitors
                         if self.monitors:
