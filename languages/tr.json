@@ -14,6 +14,7 @@
     "menu_setup_drivers": "Sürücü Yükle (Admin)",
     "menu_drivers": "Sürücüler",
     "menu_about": "Hakkında",
+    "menu_usage_guide": "Kullanım Kılavuzu",
     "lbl_style_width": "Kalınlık:",
     "lbl_style_type": "Stil:",
     "style_solid": "Düz",
@@ -90,5 +91,7 @@
     "btn_fetch_drivers": "Tüm Sürücüleri Getir",
     "msg_downloading_drivers": "Tüm sürücü paketi indiriliyor (WinUSB)...",
     "msg_downloading_omni": "OmniDriver yükleyicisi indiriliyor...",
-    "msg_drivers_success": "Sürücü paketi başarıyla indirildi ve çıkartıldı."
+    "msg_drivers_success": "Sürücü paketi başarıyla indirildi ve çıkartıldı.",
+    "lbl_transmission_workflow": "Geçirgenlik Ölçüm İş Akışı",
+    "msg_help_content": "Ocean Optics USB4000 Kullanım Kılavuzu:\n\n1. Cihaz Bağlantısı:\n- Cihazı USB portuna takın.\n- 'Yenile' butonuna basarak cihazın listede görünmesini sağlayın.\n- Cihazı seçip 'Bağlan' butonuna basın. Bağlantı kurulduğunda grafik canlanacaktır.\n\n2. Kayıt Ayarları:\n- Ölçüm Aralığı: Her bir ölçüm arasındaki saniye (Örn: 0.5 saniye).\n- Bekleme: Kayıt başlamadan önceki gecikme (ms).\n- Toplam Süre: Kaydın ne kadar süreceğini seçin (sn, dk, sa).\n- Dosya Adı: Kaydedilecek CSV dosyasının başlığını belirleyin.\n\n3. Geçirgenlik (Transmission) Ölçümü:\n- Adım 1 (Dark): Işık kaynağını kapatın veya dedektör girişini siyah bir kapakla örtün. '1. Dark Ölç' butonuna basın.\n- Adım 2 (Ref): Işığı açın ve referans örneğinizi (genellikle sadece saf çözücü) yerleştirin. '2. Referans Ölç' butonuna basın.\n- Adım 3 (Sample): Örneğinizi yerleştirin. '3. Örnek Ölç' butonuna basın. Kayıt otomatik olarak ayarlarınıza göre başlayacaktır.\n\n4. Veri Görüntüleme ve Kaydetme:\n- 'Şiddet' ve 'Geçirgenlik' butonları ile grafik modları arasında geçiş yapabilirsiniz.\n- Kaydedilen veriler uygulama içindeki 'data' klasörüne kaydedilir.\n- 'Kayıtları Aç' butonu ile bu klasöre hızlıca ulaşabilirsiniz.\n- 'OriginPro' butonu ile en son kaydı tek tıkla analiz programına aktarabilirsiniz.\n\n5. Diğer Araçlar:\n- λ İzle: Seçtiğiniz spesifik bir dalga boyundaki değişimi zamana bağlı grafik olarak izlemenizi sağlar."
 }

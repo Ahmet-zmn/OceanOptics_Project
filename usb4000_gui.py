@@ -107,6 +107,19 @@ class OceanOpticsGUI:
         self.view_mode = "Intensity"
         self.available_devices = [] # List of (id, model)
         self.monitors = [] # Active wavelength monitor windows
+        self.trans_frame = None
+        self.menubar = tk.Menu(root)
+        self.settings_menu = tk.Menu(self.menubar)
+        self.lang_menu = tk.Menu(self.settings_menu)
+        self.rec_settings_menu = tk.Menu(self.settings_menu)
+        self.format_menu = tk.Menu(self.rec_settings_menu)
+        self.drivers_menu = tk.Menu(self.menubar)
+        self.help_menu = tk.Menu(self.menubar)
+        self.t_space = 1.0
+        self.w_ms = 0.0
+        self.c_time = 10.0
+        self.fname = "spectrum_data"
+        self.record_count = 0
         
         # Plot State
         self.dark_spectrum = None
@@ -266,6 +279,8 @@ class OceanOpticsGUI:
         self.menubar.add_cascade(label=self.get_text("menu_drivers"), menu=self.drivers_menu)
 
         self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        self.help_menu.add_command(label=self.get_text("menu_usage_guide"), command=self.show_usage_guide)
+        self.help_menu.add_separator()
         self.help_menu.add_command(label=self.get_text("menu_about"), command=self.show_about)
         self.help_menu.add_command(label=self.get_text("menu_check_update"), command=self.check_for_updates)
         self.help_menu.add_command(label=self.get_text("btn_visit_github"), command=lambda: subprocess.Popen(f'start {GITHUB_URL}', shell=True))
@@ -437,21 +452,32 @@ class OceanOpticsGUI:
         self.update_menu_texts(); self.update_ui_texts()
 
     def update_menu_texts(self):
-        self.menubar.entryconfig(1, label=self.get_text("menu_settings"))
-        self.menubar.entryconfig(2, label=self.get_text("menu_drivers"))
-        self.menubar.entryconfig(3, label=self.get_text("menu_help"))
-        self.settings_menu.entryconfig(0, label=self.get_text("menu_lang"))
-        self.settings_menu.entryconfig(1, label=self.get_text("menu_rec_settings"))
-        self.settings_menu.entryconfig(2, label=self.get_text("menu_plot_settings"))
-        self.settings_menu.entryconfig(3, label=self.get_text("menu_origin"))
-        self.drivers_menu.entryconfig(0, label=self.get_text("menu_setup_drivers"))
-        self.rec_settings_menu.entryconfig(0, label=self.get_text("menu_save_path"))
-        self.rec_settings_menu.entryconfig(1, label=self.get_text("menu_log_format"))
-        self.format_menu.entryconfig(0, label=self.get_text("log_timestamp"))
-        self.format_menu.entryconfig(1, label=self.get_text("log_sequential"))
-        self.help_menu.entryconfig(0, label=self.get_text("menu_about"))
-        self.help_menu.entryconfig(1, label=self.get_text("menu_check_update"))
-        self.help_menu.entryconfig(2, label=self.get_text("btn_visit_github"))
+        try:
+            self.settings_menu.entryconfig(0, label=self.get_text("menu_lang"))
+            self.settings_menu.entryconfig(1, label=self.get_text("menu_rec_settings"))
+            self.settings_menu.entryconfig(2, label=self.get_text("menu_plot_settings"))
+            self.settings_menu.entryconfig(3, label=self.get_text("menu_origin"))
+            
+            self.rec_settings_menu.entryconfig(0, label=self.get_text("menu_save_path"))
+            self.rec_settings_menu.entryconfig(1, label=self.get_text("menu_log_format"))
+            
+            self.format_menu.entryconfig(0, label=self.get_text("log_elapsed"))
+            self.format_menu.entryconfig(1, label=self.get_text("log_timestamp"))
+            self.format_menu.entryconfig(2, label=self.get_text("log_sequential"))
+            
+            self.drivers_menu.entryconfig(0, label=self.get_text("menu_setup_drivers"))
+            
+            self.help_menu.entryconfig(0, label=self.get_text("menu_usage_guide"))
+            # Index 1 is separator
+            self.help_menu.entryconfig(2, label=self.get_text("menu_about"))
+            self.help_menu.entryconfig(3, label=self.get_text("menu_check_update"))
+            self.help_menu.entryconfig(4, label=self.get_text("btn_visit_github"))
+            
+            self.menubar.entryconfig(1, label=self.get_text("menu_settings"))
+            self.menubar.entryconfig(2, label=self.get_text("menu_drivers"))
+            self.menubar.entryconfig(3, label=self.get_text("menu_help"))
+        except:
+            pass
 
     def change_save_path(self):
         new_path = filedialog.askdirectory(initialdir=self.save_path, title=self.get_text("msg_save_path_title"))
@@ -540,6 +566,7 @@ class OceanOpticsGUI:
         self.connect_btn.config(text=self.get_text("btn_connect"))
         self.refresh_btn.config(text=self.get_text("btn_refresh"))
         self.lbl_device_title.config(text=self.get_text("lbl_device"))
+        if self.trans_frame: self.trans_frame.config(text=self.get_text("lbl_transmission_workflow"))
         
         if self.origin_exe and os.path.exists(self.origin_exe):
             self.open_origin_btn.config(text=self.get_text("btn_open_origin").format(version=self.origin_version), bg="#0078D7")
@@ -590,6 +617,35 @@ class OceanOpticsGUI:
 
         tk.Button(about_win, text=self.get_text("btn_close"), command=about_win.destroy, width=10).pack(pady=10)
 
+    def show_usage_guide(self):
+        guide_win = tk.Toplevel(self.root)
+        guide_win.title(self.get_text("menu_usage_guide"))
+        guide_win.geometry("600x650")
+        guide_win.minsize(500, 400)
+        
+        # UI Styling (Segoe UI if possible)
+        font_family = "Segoe UI" if sys.platform == "win32" else "Arial"
+        
+        main_frame = tk.Frame(guide_win, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        tk.Label(main_frame, text=self.get_text("menu_usage_guide"), font=(font_family, 14, "bold"), pady=10).pack()
+        
+        text_frame = tk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        text_area = tk.Text(text_frame, font=(font_family, 10), wrap=tk.WORD, yscrollcommand=scrollbar.set, padx=10, pady=10, relief=tk.FLAT, bg="#F5F5F5")
+        text_area.insert(tk.END, self.get_text("msg_help_content"))
+        text_area.config(state=tk.DISABLED) # Read only
+        text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        scrollbar.config(command=text_area.yview)
+        
+        tk.Button(main_frame, text=self.get_text("btn_close"), command=guide_win.destroy, bg="#455A64", fg="white", font=(font_family, 10, "bold"), width=15, relief=tk.FLAT).pack(pady=15)
+
     def setup_ui(self):
         control_panel = tk.Frame(self.root, pady=10); control_panel.pack(side=tk.TOP, fill=tk.X)
         
@@ -598,38 +654,38 @@ class OceanOpticsGUI:
         self.lbl_device_title = tk.Label(conn_frame, text=self.get_text("lbl_device"), font=("Arial", 11, "bold"))
         self.lbl_device_title.pack(side=tk.LEFT, padx=5)
         
-        self.device_combo = ttk.Combobox(conn_frame, state="readonly", width=30, font=("Arial", 11))
+        self.device_combo = ttk.Combobox(conn_frame, state="readonly", width=30, font=("Segoe UI", 11))
         self.device_combo.pack(side=tk.LEFT, padx=5)
         
-        self.refresh_btn = tk.Button(conn_frame, text=self.get_text("btn_refresh"), command=self.refresh_devices, bg="#607D8B", fg="white", font=("Arial", 10), width=12)
+        self.refresh_btn = tk.Button(conn_frame, text=self.get_text("btn_refresh"), command=self.refresh_devices, bg="#455A64", fg="white", font=("Segoe UI", 10), width=12, relief=tk.FLAT, activebackground="#546E7A", activeforeground="white")
         self.refresh_btn.pack(side=tk.LEFT, padx=5)
         
-        self.connect_btn = tk.Button(conn_frame, text=self.get_text("btn_connect"), command=self.initialize_device, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), width=12)
+        self.connect_btn = tk.Button(conn_frame, text=self.get_text("btn_connect"), command=self.initialize_device, bg="#2E7D32", fg="white", font=("Segoe UI", 10, "bold"), width=12, relief=tk.FLAT, activebackground="#388E3C", activeforeground="white")
         self.connect_btn.pack(side=tk.LEFT, padx=10)
         
         # Initial scan
         self.root.after(500, self.refresh_devices)
 
         btn_frame = tk.Frame(control_panel); btn_frame.pack(side=tk.TOP, fill=tk.X, padx=10)
-        self.stop_btn = tk.Button(btn_frame, text=self.get_text("btn_stop"), command=self.stop_acquisition, bg="#f44336", fg="white", font=("Arial", 12, "bold"), width=12, state=tk.DISABLED, cursor="arrow")
+        self.stop_btn = tk.Button(btn_frame, text=self.get_text("btn_stop"), command=self.stop_acquisition, bg="#C62828", fg="white", font=("Segoe UI", 12, "bold"), width=12, state=tk.DISABLED, cursor="arrow", relief=tk.FLAT, activebackground="#D32F2F")
         self.stop_btn.pack(side=tk.LEFT, padx=5)
-        self.intensity_view_btn = tk.Button(btn_frame, text=self.get_text("btn_intensity_mode"), command=lambda: self.switch_view_mode("Intensity"), bg="#607D8B", fg="white", font=("Arial", 11, "bold"), width=16, cursor="arrow")
+        self.intensity_view_btn = tk.Button(btn_frame, text=self.get_text("btn_intensity_mode"), command=lambda: self.switch_view_mode("Intensity"), bg="#37474F", fg="white", font=("Segoe UI", 11, "bold"), width=16, cursor="arrow", relief=tk.FLAT)
         self.intensity_view_btn.pack(side=tk.LEFT, padx=(20, 5))
-        self.trans_view_btn = tk.Button(btn_frame, text=self.get_text("btn_trans_mode"), command=lambda: self.switch_view_mode("Transmission"), bg="#607D8B", fg="white", font=("Arial", 11, "bold"), width=16, cursor="arrow")
+        self.trans_view_btn = tk.Button(btn_frame, text=self.get_text("btn_trans_mode"), command=lambda: self.switch_view_mode("Transmission"), bg="#37474F", fg="white", font=("Segoe UI", 11, "bold"), width=16, cursor="arrow", relief=tk.FLAT)
         self.trans_view_btn.pack(side=tk.LEFT, padx=5)
-        self.open_origin_btn = tk.Button(btn_frame, text=self.get_text("btn_open_origin"), command=self.open_last_in_origin, bg="#0078D7", fg="white", font=("Arial", 11, "bold"), width=16, cursor="arrow")
+        self.open_origin_btn = tk.Button(btn_frame, text=self.get_text("btn_open_origin"), command=self.open_last_in_origin, bg="#0D47A1", fg="white", font=("Segoe UI", 11, "bold"), width=16, cursor="arrow", relief=tk.FLAT)
         self.open_origin_btn.pack(side=tk.LEFT, padx=(20, 5))
-        self.open_records_btn = tk.Button(btn_frame, text=self.get_text("btn_open_records"), command=self.open_records_folder, bg="#4DB6AC", fg="white", font=("Arial", 11, "bold"), width=14, cursor="arrow")
+        self.open_records_btn = tk.Button(btn_frame, text=self.get_text("btn_open_records"), command=self.open_records_folder, bg="#00695C", fg="white", font=("Segoe UI", 11, "bold"), width=14, cursor="arrow", relief=tk.FLAT)
         self.open_records_btn.pack(side=tk.LEFT, padx=5)
-        self.monitor_btn = tk.Button(btn_frame, text=self.get_text("btn_monitor"), command=self.open_monitor, bg="#FFEB3B", fg="black", font=("Arial", 11, "bold"), width=12, cursor="arrow")
+        self.monitor_btn = tk.Button(btn_frame, text=self.get_text("btn_monitor"), command=self.open_monitor, bg="#FBC02D", fg="black", font=("Segoe UI", 11, "bold"), width=12, cursor="arrow", relief=tk.FLAT)
         self.monitor_btn.pack(side=tk.LEFT, padx=5)
-        self.close_btn = tk.Button(btn_frame, text=self.get_text("btn_close"), command=self.on_close, bg="#555555", fg="white", font=("Arial", 12, "bold"), width=12, cursor="arrow")
+        self.close_btn = tk.Button(btn_frame, text=self.get_text("btn_close"), command=self.on_close, bg="#424242", fg="white", font=("Segoe UI", 12, "bold"), width=12, cursor="arrow", relief=tk.FLAT)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
-        trans_frame = tk.LabelFrame(control_panel, text="Transmission Workflow", pady=10); trans_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
-        self.dark_btn = tk.Button(trans_frame, text=self.get_text("btn_dark"), command=self.measure_dark, bg="#9C27B0", fg="white", font=("Arial", 10, "bold"), width=15, cursor="arrow")
-        self.dark_btn.pack(side=tk.LEFT, padx=10); self.ref_btn = tk.Button(trans_frame, text=self.get_text("btn_ref"), command=self.measure_reference, bg="#FF9800", fg="white", font=("Arial", 10, "bold"), width=15, state=tk.DISABLED, cursor="arrow")
-        self.ref_btn.pack(side=tk.LEFT, padx=10); self.sample_btn = tk.Button(trans_frame, text=self.get_text("btn_sample"), command=self.measure_sample, bg="#2196F3", fg="white", font=("Arial", 10, "bold"), width=15, state=tk.DISABLED, cursor="arrow")
-        self.sample_btn.pack(side=tk.LEFT, padx=10); self.status_label = tk.Label(trans_frame, text=self.get_text("lbl_status_monitoring"), fg="#666", font=("Arial", 9, "italic")); self.status_label.pack(side=tk.LEFT, padx=20)
+        self.trans_frame = tk.LabelFrame(control_panel, text=self.get_text("lbl_transmission_workflow", "Transmission Workflow"), pady=10, font=("Segoe UI", 10, "bold")); self.trans_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+        self.dark_btn = tk.Button(self.trans_frame, text=self.get_text("btn_dark"), command=self.measure_dark, bg="#6A1B9A", fg="white", font=("Segoe UI", 10, "bold"), width=15, cursor="arrow", relief=tk.FLAT)
+        self.dark_btn.pack(side=tk.LEFT, padx=10); self.ref_btn = tk.Button(self.trans_frame, text=self.get_text("btn_ref"), command=self.measure_reference, bg="#EF6C00", fg="white", font=("Segoe UI", 10, "bold"), width=15, state=tk.DISABLED, cursor="arrow", relief=tk.FLAT)
+        self.ref_btn.pack(side=tk.LEFT, padx=10); self.sample_btn = tk.Button(self.trans_frame, text=self.get_text("btn_sample"), command=self.measure_sample, bg="#1565C0", fg="white", font=("Segoe UI", 10, "bold"), width=15, state=tk.DISABLED, cursor="arrow", relief=tk.FLAT)
+        self.sample_btn.pack(side=tk.LEFT, padx=10); self.status_label = tk.Label(self.trans_frame, text=self.get_text("lbl_status_monitoring"), fg="#666", font=("Segoe UI", 9, "italic")); self.status_label.pack(side=tk.LEFT, padx=20)
         params_frame = tk.Frame(control_panel, pady=10); params_frame.pack(side=tk.TOP, fill=tk.X, padx=10)
         self.lbl_time_space = tk.Label(params_frame, text=self.get_text("lbl_time_space")); self.lbl_time_space.grid(row=0, column=0, sticky="e", padx=5)
         self.time_space_entry = tk.Entry(params_frame, textvariable=self.time_space_var, width=8); self.time_space_entry.grid(row=0, column=1, padx=5)

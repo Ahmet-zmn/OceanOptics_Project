@@ -14,6 +14,7 @@
     "menu_setup_drivers": "Setup Drivers",
     "menu_drivers": "Drivers",
     "menu_about": "About",
+    "menu_usage_guide": "Usage Guide",
     "lbl_style_color": "Color:",
     "lbl_style_width": "Thickness:",
     "lbl_style_type": "Style:",
@@ -91,5 +92,7 @@
     "btn_fetch_drivers": "Fetch All Drivers",
     "msg_downloading_drivers": "Downloading full driver pack (WinUSB)...",
     "msg_downloading_omni": "Downloading OmniDriver installer...",
-    "msg_drivers_success": "Driver pack downloaded and extracted successfully."
+    "msg_drivers_success": "Driver pack downloaded and extracted successfully.",
+    "lbl_transmission_workflow": "Transmission Workflow",
+    "msg_help_content": "Ocean Optics USB4000 Usage Guide:\n\n1. Device Connection:\n- Plug the device into the USB port.\n- Click the 'Refresh' button to see the device in the list.\n- Select the device and click 'Connect'. The graph will come alive when connected.\n\n2. Recording Settings:\n- Time Space: Seconds between each measurement (E.g., 0.5 seconds).\n- Wait: Delay before recording starts (ms).\n- Total Time: Choose how long the recording will last (s, m, h).\n- File Name: Set the prefix for the saved CSV file.\n\n3. Transmission Measurement:\n- Step 1 (Dark): Turn off the light source or cover the detector entrance. Click '1. Measure Dark'.\n- Step 2 (Ref): Turn on the light and insert your reference sample (usually solvent only). Click '2. Measure Ref'.\n- Step 3 (Sample): Insert your sample. Click '3. Measure Sample'. Recording will start automatically based on your settings.\n\n4. Data Viewing and Saving:\n- You can switch between graph modes using the 'Intensity' and 'Transmission' buttons.\n- Saved data is stored in the 'data' folder within the application directory.\n- Use the 'Open Records' button to quickly access this folder.\n- Use the 'OriginPro' button to transfer the latest record to the analysis program with one click.\n\n5. Other Tools:\n- λ Monitor: Allows you to monitor changes at a specific wavelength as a time-dependent graph."
 }
