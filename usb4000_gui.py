@@ -71,8 +71,8 @@ class OceanOpticsGUI:
         self.root = root
         self.device_lock = threading.Lock()
         
-        self.config_file = "config.json"
-        self.lang_dir = "languages"
+        self.config_file = os.path.join(_BASE_DIR, "config.json")
+        self.lang_dir = os.path.join(_BASE_DIR, "languages")
         self.translations = {}
         self.omni_url = "" # Dynamic OmniDriver URL from GitHub
         self.lang = "tr"
@@ -942,8 +942,10 @@ class OceanOpticsGUI:
             target_file = os.path.abspath(target_file)
             try:
                 if self.origin_exe and os.path.exists(self.origin_exe):
-                    labtalk_cmd = f'open -w "{target_file}"'
-                    subprocess.Popen([self.origin_exe, "-oc", labtalk_cmd])
+                    # Origin'i doğrudan CSV dosyasıyla aç (proje dosyası gerektirmez)
+                    # -oc ve LabTalk komutu kullanmak Origin'in mevcut proje dizinine
+                    # bağımlı olmasına ve "project does not exist" hatasına yol açar.
+                    subprocess.Popen([self.origin_exe, target_file])
                 else:
                     os.startfile(target_file)
             except Exception as e: 
