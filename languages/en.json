@@ -81,6 +81,7 @@
     "lbl_monitor_ymax": "Y-Max:",
     "menu_check_update": "Check for Updates",
     "btn_visit_github": "Visit GitHub",
+    "lbl_update_info": "Update Details:",
     "btn_update_now": "Update Now",
     "btn_update_later": "Later",
     "msg_update_found": "New version available: v{version}. Would you like to update?",

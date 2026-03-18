@@ -1,7 +1,8 @@
 {
-    "version": "1.0.6",
+    "version": "1.0.7",
     "name": "OceanOptics USB4000 Spectrometer Controller",
-    "date": "2026-02-24",
+    "date": "2026-03-18",
     "update_url": "",
+    "update_note": "OriginLab hatası giderildi",
     "omni_driver_url": "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe"
-}
+}

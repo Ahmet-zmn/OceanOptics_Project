@@ -301,7 +301,8 @@ class OceanOpticsGUI:
                     self.omni_url = data.get("omni_driver_url", "")
                     
                     if server_v > APP_VERSION:
-                        self.root.after(0, lambda: self.prompt_update(server_v))
+                        update_note = data.get("update_note", "")
+                        self.root.after(0, lambda: self.prompt_update(server_v, update_note))
                     elif manual:
                         msg = self.get_text("msg_up_to_date", "Software is up to date (Version: {version})").format(version=APP_VERSION)
                         self.root.after(0, lambda: messagebox.showinfo(self.get_text("menu_check_update"), msg))
@@ -311,11 +312,17 @@ class OceanOpticsGUI:
         
         threading.Thread(target=run_check, daemon=True).start()
 
-    def prompt_update(self, new_v):
+    def prompt_update(self, new_v, note=""):
         """Güncelleme bulundu penceresi"""
         update_win = tk.Toplevel(self.root)
         update_win.title(self.get_text("menu_check_update"))
-        update_win.geometry("420x200")
+        
+        # Determine window height based on note
+        base_height = 200
+        if note:
+            base_height = 320
+            
+        update_win.geometry(f"420x{base_height}")
         update_win.resizable(False, False)
         update_win.transient(self.root)
         update_win.grab_set()
@@ -326,7 +333,16 @@ class OceanOpticsGUI:
         update_win.geometry(f"+{x}+{y}")
 
         msg = self.get_text("msg_update_found", "New version available: {version}").format(version=new_v)
-        tk.Label(update_win, text=msg, pady=20, wraplength=380, font=("Segoe UI", 10)).pack()
+        tk.Label(update_win, text=msg, pady=15, wraplength=380, font=("Segoe UI", 10, "bold")).pack()
+        
+        if note:
+            note_frame = tk.LabelFrame(update_win, text=self.get_text("lbl_update_info"), padx=10, pady=5)
+            note_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+            
+            note_text = tk.Text(note_frame, height=4, font=("Segoe UI", 9), wrap=tk.WORD, relief=tk.FLAT, bg=update_win.cget("bg"))
+            note_text.insert(tk.END, note)
+            note_text.config(state=tk.DISABLED)
+            note_text.pack(fill=tk.BOTH, expand=True)
         
         btn_frame = tk.Frame(update_win)
         btn_frame.pack(pady=10)

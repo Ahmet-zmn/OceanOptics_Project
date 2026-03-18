@@ -80,6 +80,7 @@
     "lbl_monitor_ymax": "Y-Maks:",
     "menu_check_update": "Güncelleştirmeleri Denetle",
     "btn_visit_github": "GitHub'ı Ziyaret Et",
+    "lbl_update_info": "Güncelleme Detayları:",
     "btn_update_now": "Şimdi Güncelle",
     "btn_update_later": "Sonra",
     "msg_update_found": "Yeni sürüm mevcut: v{version}. Güncellemek ister misiniz?",
