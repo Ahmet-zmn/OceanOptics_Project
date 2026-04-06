@@ -313,6 +313,7 @@ class OceanOpticsGUI:
                     data = json.loads(response.read().decode())
                     server_v = data.get("version", "1.0.0")
                     self._update_exe_url = data.get("update_url", "")
+                    self._setup_filename = data.get("setup_name", "OceanOptics_Controller_Setup.exe")
                     self.omni_url = data.get("omni_driver_url", "")
                     self.oceandirect_url = data.get("oceandirect_url", "")
                     
@@ -378,7 +379,8 @@ class OceanOpticsGUI:
         
         # Eğer link boşsa veya varsayılan GitHub linki gerekiyorsa
         if not exe_url:
-            exe_url = GITHUB_URL + f"/releases/download/v{new_v}/OceanOptics_USB4000_Setup.exe"
+            setup_name = getattr(self, '_setup_filename', "OceanOptics_Controller_Setup.exe")
+            exe_url = GITHUB_URL + f"/releases/download/v{new_v}/{setup_name}"
             
         # Google Drive linki kontrolü ve dönüştürme (view -> uc?export=download)
         if "drive.google.com" in exe_url:
