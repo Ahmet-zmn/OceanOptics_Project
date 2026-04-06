@@ -10,7 +10,7 @@
 ;   - Masaustu kisayolu olusturulur
 ; ============================================================================
 
-#define MyAppName "OceanOptics_USB4000"
+#define MyAppName "OceanOptics_Controller"
 #define MyAppVersion "1.1.3"
 #define MyAppPublisher "Ahmet OZMEN"
 #define MyAppURL "https://github.com/Ahmet-zmn/OceanOptics_Project"
@@ -24,11 +24,11 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 SetupIconFile=app_icon.ico
-DefaultDirName={autopf}\OceanOptics_USB4000
+DefaultDirName={autopf}\OceanOptics_Controller
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=Output
-OutputBaseFilename=OceanOptics_USB4000_Setup
+OutputBaseFilename=OceanOptics_Controller_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -59,7 +59,7 @@ Source: "offline_packages\*.whl"; DestDir: "{app}\offline_packages"; Flags: igno
 
 ; ---- Application Files ----
 Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "OceanOptics_USB4000.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "OceanOptics_Controller.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "config.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
 Source: "version.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launch_app.bat"; DestDir: "{app}"; Flags: ignoreversion
@@ -96,7 +96,7 @@ Name: "{group}\Kaldir {#MyAppName}"; Filename: "{uninstallexe}"
 ; Filename: "{tmp}\OmniDriver-2.80-win64-installer.exe"; StatusMsg: "OmniDriver 2.80 kuruluyor..."; Components: omnidriver; Flags: waituntilterminated
 
 ; ---- Kurulum sonrasi uygulamayi calistir ----
-Filename: "{app}\{#MyAppExeName}"; Description: "OceanOptics USB4000 uygulamasini baslat"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent shellexec
+Filename: "{app}\{#MyAppExeName}"; Description: "OceanOptics Controller uygulamasini baslat"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent shellexec
 
 [Code]
 
@@ -127,7 +127,7 @@ begin
     LogContent := TStringList.Create;
     try
       LogContent.Add('============================================================');
-      LogContent.Add('  OceanOptics USB4000 Spectrometer - Kurulum Raporu');
+      LogContent.Add('  OceanOptics Controller - Kurulum Raporu');
       LogContent.Add('============================================================');
       LogContent.Add('Kurulum Dizini: ' + AppDir);
       LogContent.Add('------------------------------------------------------------');
@@ -255,7 +255,7 @@ begin
         BatContent.Add('@echo off');
         BatContent.Add('setlocal EnableDelayedExpansion');
         BatContent.Add('chcp 65001 >nul 2>&1');
-        BatContent.Add('title OceanOptics USB4000 - Kutuphane Kurulumu');
+        BatContent.Add('title OceanOptics Controller - Kutuphane Kurulumu');
         BatContent.Add('color 0A');
         BatContent.Add('');
         BatContent.Add('set "PYTHON_EXE=' + PythonExe + '"');

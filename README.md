@@ -14,7 +14,7 @@ A portable, user-friendly GUI application for controlling the Ocean Optics USB40
 
 ### The Easiest Way
 1. Go to the `dist` folder in this repository.
-2. Download and run `OceanOptics_USB4000_Setup.exe`.
+2. Download and run `OceanOptics_Controller_Setup.exe`.
 3. Follow the on-screen instructions to install the application.
 
 ### From Source
@@ -28,7 +28,7 @@ A portable, user-friendly GUI application for controlling the Ocean Optics USB40
    ```
 3. Launch the application:
    ```bash
-   python usb4000_gui.py
+   python OceanOptics_Controller.py
    ```
 
 ## Authors
