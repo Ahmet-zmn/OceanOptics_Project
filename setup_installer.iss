@@ -11,7 +11,7 @@
 ; ============================================================================
 
 #define MyAppName "OceanOptics_Controller"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.2"
 #define MyAppPublisher "Ahmet OZMEN"
 #define MyAppURL "https://github.com/Ahmet-zmn/OceanOptics_Project"
 #define MyAppExeName "launch_app.bat"

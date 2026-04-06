@@ -227,7 +227,10 @@ class OceanOpticsGUI:
                 with open(self.config_file, 'r') as f:
                     config = json.load(f)
                     self.lang = config.get("lang", "tr")
-                    self.save_path = config.get("save_path", default_save_path)
+                    # Eğer save_path boş(null) ise veya bu bilgisayarda yoksa (ilk kurulum durumu)
+                    self.save_path = config.get("save_path")
+                    if not self.save_path or not os.path.exists(self.save_path):
+                        self.save_path = default_save_path
                     self.log_format = config.get("log_format", "ElapsedTime")
                     self.plot_styles = config.get("plot_styles", default_styles)
                     self.origin_exe = config.get("origin_exe", None)

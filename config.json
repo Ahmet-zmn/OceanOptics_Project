@@ -1,0 +1,25 @@
+{
+    "lang": "tr",
+    "save_path": null,
+    "log_format": "ElapsedTime",
+    "plot_styles": {
+        "dark": {
+            "color": "#000000",
+            "width": 1.5,
+            "style": "-"
+        },
+        "ref": {
+            "color": "#ff0000",
+            "width": 1.5,
+            "style": "-"
+        },
+        "signal": {
+            "color": "#0000a0",
+            "width": 3.0,
+            "style": "-"
+        }
+    },
+    "origin_exe": null,
+    "origin_version": "Origin2024",
+    "last_saved_file": null
+}
