@@ -465,14 +465,30 @@ class OceanOpticsGUI:
 
         def run_dl():
             try:
-                # User-Agent handling for some servers
-                opener = urllib.request.build_opener()
-                opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-                urllib.request.install_opener(opener)
-                
-                urllib.request.urlretrieve(url, target_path, reporthook=progress_hook)
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req) as response:
+                    total_size = int(response.info().get('Content-Length', 0))
+                    downloaded = 0
+                    chunk_size = 1024 * 64 
+                    
+                    with open(target_path, 'wb') as f:
+                        while not self._stop_download:
+                            chunk = response.read(chunk_size)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_size > 0:
+                                percent = int(downloaded * 100 / total_size)
+                                if percent > 100: percent = 100
+                                self.root.after(0, lambda p=percent: progress.config(value=p))
+                                self.root.after(0, lambda p=percent: status_label.config(text=f"{self.get_text('msg_downloading')} ({p}%)"))
+                    
+                    if not self._stop_download and total_size > 0 and downloaded < total_size:
+                        raise Exception(f"Incomplete download: {downloaded}/{total_size} bytes received.")
+
                 self.root.after(0, status_win.destroy)
-                if success_callback:
+                if not self._stop_download and success_callback:
                     self.root.after(0, lambda: success_callback())
             except Exception as e:
                 self.root.after(0, status_win.destroy)
