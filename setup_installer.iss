@@ -10,8 +10,8 @@
 ;   - Masaustu kisayolu olusturulur
 ; ============================================================================
 
-#define MyAppName "OceanOptics_Controller"
-#define MyAppVersion "1.1.2"
+#define MyAppName "OceanOptics_USB4000"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "Ahmet OZMEN"
 #define MyAppURL "https://github.com/Ahmet-zmn/OceanOptics_Project"
 #define MyAppExeName "launch_app.bat"
@@ -24,17 +24,17 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 SetupIconFile=app_icon.ico
-DefaultDirName={autopf}\OceanOptics_Controller
+DefaultDirName={autopf}\OceanOptics_USB4000
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=Output
-OutputBaseFilename=OceanOptics_Controller_Setup
+OutputBaseFilename=OceanOptics_USB4000_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesInstallIn64BitMode=x64
 
 [Languages]
 Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
@@ -59,7 +59,7 @@ Source: "offline_packages\*.whl"; DestDir: "{app}\offline_packages"; Flags: igno
 
 ; ---- Application Files ----
 Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "OceanOptics_Controller.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "OceanOptics_USB4000.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "config.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
 Source: "version.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launch_app.bat"; DestDir: "{app}"; Flags: ignoreversion

@@ -1,6 +1,6 @@
 {
     "lang": "tr",
-    "save_path": null,
+    "save_path": "C:\\Users\\eemah\\OceanOptics_Project\\data",
     "log_format": "ElapsedTime",
     "plot_styles": {
         "dark": {
@@ -19,7 +19,7 @@
             "style": "-"
         }
     },
-    "origin_exe": null,
+    "origin_exe": "C:\\Program Files\\OriginLab\\Origin2024\\Origin64.exe",
     "origin_version": "Origin2024",
     "last_saved_file": null
 }
