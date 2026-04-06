@@ -1,7 +1,13 @@
 import sys
 import os
 
-# PyInstaller one-dir modunda sys._MEIPASS zaten sys.path'e eklenir
-# ama oceandirect'in importlanabilmesi için açıkça ekliyoruz
-if hasattr(sys, '_MEIPASS'):
-    sys.path.insert(0, sys._MEIPASS)
+if getattr(sys, 'frozen', False):
+    # sys._MEIPASS: PyInstaller'ın geçici dizini
+    _BASE = sys._MEIPASS
+    if _BASE not in sys.path:
+        sys.path.insert(0, _BASE)
+    
+    # oceandirect klasörü için ekleme
+    _OCEAN = os.path.join(_BASE, "oceandirect")
+    if os.path.isdir(_OCEAN) and _OCEAN not in sys.path:
+        sys.path.insert(0, _OCEAN)

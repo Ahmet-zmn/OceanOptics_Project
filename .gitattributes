@@ -1,0 +1,2 @@
+winusb/OmniDriver-2.80-win64-installer.exe filter=lfs diff=lfs merge=lfs -text
+tools/OmniDriver-2.80-win64-installer.exe filter=lfs diff=lfs merge=lfs -text

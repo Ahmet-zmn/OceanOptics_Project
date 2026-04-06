@@ -1,6 +1,6 @@
 ;;
 ;; OOI_Spark.inf
-;; Copyright (C) 2024 Ocean Optics, Inc.  All rights reserved.
+;; Copyright (C) 2014 Ocean Optics, Inc.  All rights reserved.
 
 ; Adapted from the example INF in the Microsoft document "How to Use WinUSB to Communicate with a USB Device"
 
@@ -9,7 +9,7 @@ Signature = "$Windows NT$"
 Class = OceanOpticsUSBDevice
 ClassGUID={BAD36DAB-A3D2-4a0e-8B2E-DA36202187D4}
 Provider = %ProviderName%
-DriverVer=03/06/2024,1.2.0
+DriverVer=03/23/2014,1.2.0
 CatalogFile=OOI_Spark.cat
 
 ; =================== Class section ==================

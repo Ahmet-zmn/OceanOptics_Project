@@ -1,0 +1,1482 @@
+import tkinter as tk
+from tkinter import messagebox, ttk, filedialog, colorchooser
+import threading
+import time
+import sys
+import os
+import csv
+import json
+import subprocess
+import ctypes
+import ctypes.wintypes
+from datetime import datetime
+import urllib.request
+
+GITHUB_URL = "https://github.com/Ahmet-zmn/OceanOptics_Project"
+
+# version.json dosyasindan surum bilgisini oku
+def _load_app_version():
+    try:
+        vf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.json")
+        with open(vf, "r", encoding="utf-8") as f:
+            return json.load(f).get("version", "1.0.0")
+    except Exception:
+        return "1.0.0"
+
+APP_VERSION = _load_app_version()
+
+# EXE (cx_Freeze) modunda çalışırken exe'nin klasörünü sys.path'e ekle
+# Böylece 'oceandirect', 'languages' vb. yan klasörler bulunabilir
+if getattr(sys, 'frozen', False):
+    # cx_Freeze: executable'ın bulunduğu klasör
+    _BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Normal Python çalıştırma
+    _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if _BASE_DIR not in sys.path:
+    sys.path.insert(0, _BASE_DIR)
+
+# oceandirect klasörünü de doğrudan ekle (frozen modda import için)
+_OCEAN_DIR = os.path.join(_BASE_DIR, "oceandirect")
+if os.path.isdir(_OCEAN_DIR) and _OCEAN_DIR not in sys.path:
+    sys.path.insert(0, _OCEAN_DIR)
+
+# Tcl/Tk init.tcl hatası için — share/tcl8.6 klasörünü işaret et
+_share = os.path.join(_BASE_DIR, "share")
+for _entry in os.listdir(_share) if os.path.isdir(_share) else []:
+    if _entry.startswith("tcl"):
+        os.environ.setdefault("TCL_LIBRARY", os.path.join(_share, _entry))
+    if _entry.startswith("tk"):
+        os.environ.setdefault("TK_LIBRARY",  os.path.join(_share, _entry))
+
+# Çalışma dizinini de exe'nin klasörüne taşı (config.json, data/ vb. için)
+os.chdir(_BASE_DIR)
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+
+# Localization: imports now work directly from the local 'oceandirect' package
+try:
+    from oceandirect.OceanDirectAPI import OceanDirectAPI, OceanDirectError
+    print("OceanDirect SDK successfully imported.")
+except ImportError as e:
+    print(f"Error importing OceanDirect SDK: {e}")
+    messagebox.showerror("Import Error", "Please ensure the 'oceandirect' folder is in the same directory.")
+    sys.exit(1)
+
+class OceanOpticsGUI:
+    def __init__(self, root):
+        self.root = root
+        try:
+            icon_path = os.path.join(_BASE_DIR, 'app_icon.ico')
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+        except Exception:
+            pass
+        self.device_lock = threading.Lock()
+        
+        self.config_file = os.path.join(_BASE_DIR, "config.json")
+        self.lang_dir = os.path.join(_BASE_DIR, "languages")
+        self.translations = {}
+        self.omni_url = "" # Dynamic OmniDriver URL from GitHub
+        self.lang = "tr"
+        self._stop_update = False
+        self._stop_download = False
+        self.record_count = 0 
+        self.save_path = ""
+        self.log_format = "Timestamp"
+        self.plot_styles = {}
+        self.origin_version = "OriginLab"
+        self.origin_exe = None
+        
+        self.load_all_translations()
+        self.load_config()
+        # self.find_origin_exe() # Moved logic
+        # self.initialize_device() # Disable auto-connect
+        self.root.after(100, lambda: self.find_origin_exe(silent=True))
+        self.root.after(2000, lambda: self.check_for_updates(manual=False))
+        
+        self.root.title(self.get_text("title"))
+        self.root.geometry("1000x920")
+        
+        self.api = OceanDirectAPI()
+        self.device = None
+        self.wavelengths = None
+        self.running = False
+        self.stop_requested = False
+        self.is_recording = False
+        self.thread = None
+        self.last_saved_file = None
+        self.mode = "Intensity"
+        self.view_mode = "Intensity"
+        self.device_model = ""  # Connected device model name
+        self.device_serial = "" # Connected device serial number
+        self.available_devices = [] # List of (id, model, serial)
+        self.auto_y_scale = True  # Y-axis auto-scale toggle
+        self.gamry_sync = False   # Gamry Framework sync on/off
+        self.monitors = [] # Active wavelength monitor windows
+        self.trans_frame = None
+        self.menubar = tk.Menu(root)
+        self.settings_menu = tk.Menu(self.menubar)
+        self.lang_menu = tk.Menu(self.settings_menu)
+        self.rec_settings_menu = tk.Menu(self.settings_menu)
+        self.format_menu = tk.Menu(self.rec_settings_menu)
+        self.drivers_menu = tk.Menu(self.menubar)
+        self.help_menu = tk.Menu(self.menubar)
+        self.t_space = 1.0
+        self.w_ms = 0.0
+        self.c_time = 10.0
+        self.fname = "spectrum_data"
+        self.record_count = 0
+        
+        # Plot State
+        self.dark_spectrum = None
+        self.ref_spectrum = None
+        self.mode = "Intensity" 
+        self.view_mode = "Intensity" 
+        
+        # Parameters
+        self.time_space_var = tk.StringVar(value="1.0")
+        self.wait_ms_var = tk.StringVar(value="0")
+        self.collect_time_var = tk.StringVar(value="10.0")
+        self.time_unit_var = tk.StringVar(value=self.get_text("unit_sec"))
+        self.filename_var = tk.StringVar(value="spectrum_data")
+        self.log_format_var = tk.StringVar(value=self.log_format)
+        
+        self.setup_menu()
+        self.setup_ui()
+        self.update_ui_texts()
+
+    def find_origin_exe(self, silent=True):
+        paths = [r"C:\Program Files\OriginLab", r"C:\Program Files (x86)\OriginLab"]
+        detected = []
+        for base in paths:
+            if os.path.exists(base):
+                for item in os.listdir(base):
+                    exe = os.path.join(base, item, "Origin64.exe")
+                    if os.path.exists(exe):
+                        detected.append((item, exe))
+        if detected:
+            detected.sort(key=lambda x: x[0], reverse=True)
+            self.origin_version = detected[0][0]
+            self.origin_exe = detected[0][1]
+            if not silent: messagebox.showinfo("Origin", self.get_text("msg_origin_success").format(version=self.origin_version))
+        else:
+            if not silent: messagebox.showwarning("Origin", self.get_text("err_origin_not_found"))
+            if not hasattr(self, 'origin_exe') or self.origin_exe is None:
+                self.origin_version = "OriginLab"
+                self.origin_exe = None
+        self.save_config()
+
+    def open_origin_settings(self):
+        diag = tk.Toplevel(self.root)
+        diag.title(self.get_text("menu_origin"))
+        diag.geometry("400x200")
+        diag.transient(self.root)
+        diag.grab_set()
+
+        lbl_curr = tk.Label(diag, text=self.get_text("lbl_origin_detected").format(version=self.origin_version), pady=10)
+        lbl_curr.pack()
+
+        def run_detect():
+            self.find_origin_exe(silent=False)
+            self.update_ui_texts()
+            lbl_curr.config(text=self.get_text("lbl_origin_detected").format(version=self.origin_version))
+
+        def run_manual():
+            path = filedialog.askopenfilename(title=self.get_text("btn_origin_manual"), filetypes=[("Origin Executable", "Origin64.exe"), ("All Files", "*.*")])
+            if path:
+                self.origin_exe = path
+                self.origin_version = os.path.basename(os.path.dirname(path))
+                self.save_config()
+                self.update_ui_texts()
+                lbl_curr.config(text=self.get_text("lbl_origin_detected").format(version=self.origin_version))
+                messagebox.showinfo("Origin", self.get_text("msg_origin_success").format(version=self.origin_version))
+
+        tk.Button(diag, text=self.get_text("btn_origin_detect"), command=run_detect, width=25, pady=5).pack(pady=5)
+        tk.Button(diag, text=self.get_text("btn_origin_manual"), command=run_manual, width=25, pady=5).pack(pady=5)
+        tk.Button(diag, text=self.get_text("btn_close"), command=diag.destroy, width=15).pack(pady=10)
+
+    def load_all_translations(self):
+        if not os.path.exists(self.lang_dir): os.makedirs(self.lang_dir)
+        found_files = [f for f in os.listdir(self.lang_dir) if f.endswith(".json")]
+        if not found_files:
+            self.translations["tr"] = {"title": "Spektrometre"}
+            return
+        for filename in found_files:
+            lang_code = os.path.splitext(filename)[0]
+            try:
+                with open(os.path.join(self.lang_dir, filename), 'r', encoding='utf-8') as f:
+                    self.translations[lang_code] = json.load(f)
+            except Exception as e: print(f"Load error {filename}: {e}")
+
+    def load_config(self):
+        default_save_path = os.path.join(_BASE_DIR, "data")
+        default_styles = {
+            "dark": {"color": "#000000", "width": 1.5, "style": "-"},
+            "ref": {"color": "#00BFFF", "width": 1.5, "style": "-"},
+            "signal": {"color": "#0000FF", "width": 2.0, "style": "-"}
+        }
+        if not os.path.exists(default_save_path): os.makedirs(default_save_path)
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    self.lang = config.get("lang", "tr")
+                    self.save_path = config.get("save_path", default_save_path)
+                    self.log_format = config.get("log_format", "ElapsedTime")
+                    self.plot_styles = config.get("plot_styles", default_styles)
+                    self.origin_exe = config.get("origin_exe", None)
+                    self.origin_version = config.get("origin_version", "OriginLab")
+                    self.last_saved_file = config.get("last_saved_file", None)
+            except: 
+                self.lang = "tr"; self.save_path = default_save_path; self.log_format = "ElapsedTime"; self.plot_styles = default_styles
+                self.origin_exe = None; self.origin_version = "OriginLab"
+        else: 
+            self.lang = "tr"; self.save_path = default_save_path; self.log_format = "ElapsedTime"; self.plot_styles = default_styles
+            self.origin_exe = None; self.origin_version = "OriginLab"
+            self.save_config()
+        if self.lang not in self.translations: self.lang = list(self.translations.keys())[0] if self.translations else "tr"
+
+    def save_config(self):
+        config = {
+            "lang": self.lang, 
+            "save_path": self.save_path, 
+            "log_format": self.log_format, 
+            "plot_styles": self.plot_styles,
+            "origin_exe": self.origin_exe,
+            "origin_version": self.origin_version,
+            "last_saved_file": self.last_saved_file
+        }
+        try:
+            with open(self.config_file, 'w') as f: json.dump(config, f, indent=4)
+        except Exception as e: print(f"Save config error: {e}")
+
+    def get_text(self, key, default=None):
+        if self.lang in self.translations:
+            return self.translations[self.lang].get(key, default if default is not None else key)
+        return default if default is not None else key
+
+    def setup_menu(self):
+        self.menubar = tk.Menu(self.root)
+        self.settings_menu = tk.Menu(self.menubar, tearoff=0)
+        self.lang_menu = tk.Menu(self.settings_menu, tearoff=0)
+        for lang_code in sorted(self.translations.keys()):
+            label = lang_code.upper()
+            if lang_code == "tr": label = "Türkçe"
+            elif lang_code == "en": label = "English"
+            self.lang_menu.add_command(label=label, command=lambda l=lang_code: self.change_language(l))
+        self.settings_menu.add_cascade(label=self.get_text("menu_lang"), menu=self.lang_menu)
+        
+        self.rec_settings_menu = tk.Menu(self.settings_menu, tearoff=0)
+        self.rec_settings_menu.add_command(label=self.get_text("menu_save_path"), command=self.change_save_path)
+        self.format_menu = tk.Menu(self.rec_settings_menu, tearoff=0)
+        self.format_menu.add_radiobutton(label=self.get_text("log_elapsed"), variable=self.log_format_var, value="ElapsedTime", command=self.change_log_format)
+        self.format_menu.add_radiobutton(label=self.get_text("log_timestamp"), variable=self.log_format_var, value="Timestamp", command=self.change_log_format)
+        self.format_menu.add_radiobutton(label=self.get_text("log_sequential"), variable=self.log_format_var, value="Sequential", command=self.change_log_format)
+        self.rec_settings_menu.add_cascade(label=self.get_text("menu_log_format"), menu=self.format_menu)
+        self.settings_menu.add_cascade(label=self.get_text("menu_rec_settings"), menu=self.rec_settings_menu)
+        
+        self.settings_menu.add_command(label=self.get_text("menu_plot_settings"), command=self.open_plot_settings)
+        self.settings_menu.add_command(label=self.get_text("menu_origin"), command=self.open_origin_settings)
+        
+        self.menubar.add_cascade(label=self.get_text("menu_settings"), menu=self.settings_menu)
+        
+        self.drivers_menu = tk.Menu(self.menubar, tearoff=0)
+        self.drivers_menu.add_command(label=self.get_text("menu_setup_drivers"), command=self.open_driver_setup)
+        self.menubar.add_cascade(label=self.get_text("menu_drivers"), menu=self.drivers_menu)
+
+        self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        self.help_menu.add_command(label=self.get_text("menu_usage_guide"), command=self.show_usage_guide)
+        self.help_menu.add_separator()
+        self.help_menu.add_command(label=self.get_text("menu_about"), command=self.show_about)
+        self.help_menu.add_command(label=self.get_text("menu_check_update"), command=self.check_for_updates)
+        self.help_menu.add_command(label=self.get_text("btn_visit_github"), command=lambda: subprocess.Popen(f'start {GITHUB_URL}', shell=True))
+        self.menubar.add_cascade(label=self.get_text("menu_help"), menu=self.help_menu)
+        self.root.config(menu=self.menubar)
+
+    def check_for_updates(self, manual=True):
+        """GitHub üzerinden yeni versiyon kontrolü yapar."""
+        v_url = GITHUB_URL.replace("github.com", "raw.githubusercontent.com") + "/main/version.json"
+        
+        def run_check():
+            try:
+                req = urllib.request.Request(v_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    server_v = data.get("version", "1.0.0")
+                    self._update_exe_url = data.get("update_url", "")
+                    self.omni_url = data.get("omni_driver_url", "")
+                    self.oceandirect_url = data.get("oceandirect_url", "")
+                    
+                    if server_v > APP_VERSION:
+                        update_note = data.get("update_note", "")
+                        self.root.after(0, lambda: self.prompt_update(server_v, update_note))
+                    elif manual:
+                        msg = self.get_text("msg_up_to_date", "Software is up to date (Version: {version})").format(version=APP_VERSION)
+                        self.root.after(0, lambda: messagebox.showinfo(self.get_text("menu_check_update"), msg))
+            except Exception as e:
+                if manual:
+                    self.root.after(0, lambda: messagebox.showerror("Error", self.get_text("msg_update_error").format(error=str(e))))
+        
+        threading.Thread(target=run_check, daemon=True).start()
+
+    def prompt_update(self, new_v, note=""):
+        """Güncelleme bulundu penceresi"""
+        update_win = tk.Toplevel(self.root)
+        update_win.title(self.get_text("menu_check_update"))
+        
+        # Determine window height based on note
+        base_height = 200
+        if note:
+            base_height = 320
+            
+        update_win.geometry(f"420x{base_height}")
+        update_win.resizable(False, False)
+        update_win.transient(self.root)
+        update_win.grab_set()
+
+        # Ekranda ortala
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 210
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        update_win.geometry(f"+{x}+{y}")
+
+        msg = self.get_text("msg_update_found", "New version available: {version}").format(version=new_v)
+        tk.Label(update_win, text=msg, pady=15, wraplength=380, font=("Segoe UI", 10, "bold")).pack()
+        
+        if note:
+            note_frame = tk.LabelFrame(update_win, text=self.get_text("lbl_update_info"), padx=10, pady=5)
+            note_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+            
+            note_text = tk.Text(note_frame, height=4, font=("Segoe UI", 9), wrap=tk.WORD, relief=tk.FLAT, bg=update_win.cget("bg"))
+            note_text.insert(tk.END, note)
+            note_text.config(state=tk.DISABLED)
+            note_text.pack(fill=tk.BOTH, expand=True)
+        
+        btn_frame = tk.Frame(update_win)
+        btn_frame.pack(pady=10)
+
+        def on_update():
+            update_win.destroy()
+            self.download_and_install_update(new_v)
+
+        tk.Button(btn_frame, text=self.get_text("btn_update_now", "Update Now"), command=on_update,
+                  width=15, bg="#0078D7", fg="white", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=10)
+        tk.Button(btn_frame, text=self.get_text("btn_update_later", "Later"), command=update_win.destroy,
+                  width=15).pack(side=tk.LEFT, padx=10)
+
+    def download_and_install_update(self, new_v):
+        """GitHub veya Google Drive üzerinden güncel kurulum EXE'sini indir ve çalıştır."""
+        exe_url = getattr(self, '_update_exe_url', '') or ''
+        
+        # Eğer link boşsa veya varsayılan GitHub linki gerekiyorsa
+        if not exe_url:
+            exe_url = GITHUB_URL + f"/releases/download/v{new_v}/OceanOptics_USB4000_Setup.exe"
+            
+        # Google Drive linki kontrolü ve dönüştürme (view -> uc?export=download)
+        if "drive.google.com" in exe_url:
+            if "/file/d/" in exe_url:
+                file_id = exe_url.split("/file/d/")[1].split("/")[0]
+                exe_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+            elif "id=" not in exe_url and "/d/" in exe_url:
+                # Alternatif format denemesi
+                parts = exe_url.split("/")
+                for i, p in enumerate(parts):
+                    if p == "d" and i+1 < len(parts):
+                        file_id = parts[i+1]
+                        exe_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+                        break
+        
+        temp_dir = os.environ.get("TEMP", os.getcwd())
+        target_path = os.path.join(temp_dir, "OceanOptics_USB4000_Setup_Update.exe")
+        
+        def success():
+            try:
+                subprocess.Popen(f'"{target_path}"', shell=True)
+                self.on_close()
+            except Exception as e:
+                self.log_update_error(f"Installation trigger failed: {str(e)}")
+                messagebox.showerror("Error", f"Update installer could not be started: {e}")
+
+        self.start_download(exe_url, target_path, self.get_text("menu_check_update"), success)
+
+    def log_update_error(self, message):
+        """Güncelleme hatalarını dosyaya kaydeder."""
+        try:
+            log_path = os.path.join(_BASE_DIR, "update_error_log.txt")
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+        except:
+            pass
+
+    def start_download(self, url, target_path, title, success_callback=None):
+        """Genel amaçlı dosya indirme yardımcısı (İlerleme çubuklu)"""
+        if not url:
+            messagebox.showerror("Error", "URL not found.")
+            return
+
+        status_win = tk.Toplevel(self.root)
+        status_win.title(title)
+        status_win.geometry("400x160")
+        status_win.resizable(False, False)
+        status_win.transient(self.root)
+        status_win.grab_set()
+
+        # Center
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 80
+        status_win.geometry(f"+{x}+{y}")
+
+        status_label = tk.Label(status_win, text=self.get_text("msg_downloading"), pady=10, wraplength=350)
+        status_label.pack()
+
+        progress = ttk.Progressbar(status_win, orient=tk.HORIZONTAL, length=300, mode='determinate')
+        progress.pack(pady=10)
+
+        self._stop_download = False
+        def on_cancel():
+            self._stop_download = True
+            status_win.destroy()
+
+        cancel_btn = tk.Button(status_win, text="Cancel", command=on_cancel)
+        cancel_btn.pack(pady=5)
+
+        def progress_hook(count, block_size, total_size):
+            if hasattr(self, '_stop_download') and self._stop_download:
+                raise Exception("CANCEL_DL")
+            if total_size > 0:
+                percent = int(count * block_size * 100 / total_size)
+                if percent > 100: percent = 100
+                self.root.after(0, lambda p=percent: progress.config(value=p))
+                self.root.after(0, lambda p=percent: status_label.config(text=f"{self.get_text('msg_downloading')} ({p}%)"))
+
+        def run_dl():
+            try:
+                # User-Agent handling for some servers
+                opener = urllib.request.build_opener()
+                opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+                urllib.request.install_opener(opener)
+                
+                urllib.request.urlretrieve(url, target_path, reporthook=progress_hook)
+                self.root.after(0, status_win.destroy)
+                if success_callback:
+                    self.root.after(0, lambda: success_callback())
+            except Exception as e:
+                self.root.after(0, status_win.destroy)
+                if "CANCEL_DL" not in str(e):
+                    err_msg = self.get_text("msg_download_error", "Download error: {error}").format(error=str(e))
+                    self.log_update_error(f"Download error from {url}: {str(e)}")
+                    self.root.after(0, lambda m=err_msg: messagebox.showerror("Error", m))
+
+        threading.Thread(target=run_dl, daemon=True).start()
+
+    def change_language(self, lang):
+        self.lang = lang; self.save_config()
+        self.root.title(self.get_text("title"))
+        self.update_menu_texts(); self.update_ui_texts()
+
+    def update_menu_texts(self):
+        try:
+            self.settings_menu.entryconfig(0, label=self.get_text("menu_lang"))
+            self.settings_menu.entryconfig(1, label=self.get_text("menu_rec_settings"))
+            self.settings_menu.entryconfig(2, label=self.get_text("menu_plot_settings"))
+            self.settings_menu.entryconfig(3, label=self.get_text("menu_origin"))
+            
+            self.rec_settings_menu.entryconfig(0, label=self.get_text("menu_save_path"))
+            self.rec_settings_menu.entryconfig(1, label=self.get_text("menu_log_format"))
+            
+            self.format_menu.entryconfig(0, label=self.get_text("log_elapsed"))
+            self.format_menu.entryconfig(1, label=self.get_text("log_timestamp"))
+            self.format_menu.entryconfig(2, label=self.get_text("log_sequential"))
+            
+            self.drivers_menu.entryconfig(0, label=self.get_text("menu_setup_drivers"))
+            
+            self.help_menu.entryconfig(0, label=self.get_text("menu_usage_guide"))
+            # Index 1 is separator
+            self.help_menu.entryconfig(2, label=self.get_text("menu_about"))
+            self.help_menu.entryconfig(3, label=self.get_text("menu_check_update"))
+            self.help_menu.entryconfig(4, label=self.get_text("btn_visit_github"))
+            
+            self.menubar.entryconfig(1, label=self.get_text("menu_settings"))
+            self.menubar.entryconfig(2, label=self.get_text("menu_drivers"))
+            self.menubar.entryconfig(3, label=self.get_text("menu_help"))
+        except:
+            pass
+
+    def change_save_path(self):
+        new_path = filedialog.askdirectory(initialdir=self.save_path, title=self.get_text("msg_save_path_title"))
+        if new_path: self.save_path = new_path; self.save_config()
+
+    def change_log_format(self):
+        self.log_format = self.log_format_var.get(); self.save_config()
+
+    def create_style_row(self, parent, key, controls):
+        frame = tk.LabelFrame(parent, text=self.get_text(f"leg_{key}"), padx=10, pady=5)
+        frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Color
+        tk.Label(frame, text=self.get_text("lbl_style_color")).grid(row=0, column=0, padx=5)
+        color_btn = tk.Button(frame, bg=self.plot_styles[key]["color"], width=10)
+        color_btn.config(command=lambda: self.pick_color(key, color_btn))
+        color_btn.grid(row=0, column=1, padx=5)
+        
+        # Style
+        tk.Label(frame, text=self.get_text("lbl_style_type")).grid(row=0, column=2, padx=5)
+        styles = ["-", "--", ":", "-."]
+        style_var = tk.StringVar(value=self.plot_styles[key]["style"])
+        style_combo = ttk.Combobox(frame, textvariable=style_var, values=styles, state="readonly", width=10)
+        style_combo.grid(row=0, column=3, padx=5)
+        
+        # Width
+        tk.Label(frame, text=self.get_text("lbl_style_width")).grid(row=0, column=4, padx=5)
+        width_var = tk.DoubleVar(value=self.plot_styles[key]["width"])
+        width_spin = tk.Spinbox(frame, from_=0.5, to=10.0, increment=0.5, textvariable=width_var, width=5)
+        width_spin.grid(row=0, column=5, padx=5)
+        
+        controls[key] = {"color_btn": color_btn, "style_var": style_var, "width_var": width_var}
+
+    def open_plot_settings(self):
+        settings_win = tk.Toplevel(self.root)
+        settings_win.title(self.get_text("menu_plot_settings"))
+        settings_win.geometry("480x420")
+        settings_win.grab_set()
+        
+        controls = {}
+        for key in ["dark", "ref", "signal"]:
+            self.create_style_row(settings_win, key, controls)
+
+        def save_styles():
+            for key in controls:
+                self.plot_styles[key]["color"] = controls[key]["color_btn"]["bg"]
+                self.plot_styles[key]["style"] = controls[key]["style_var"].get()
+                self.plot_styles[key]["width"] = controls[key]["width_var"].get()
+            self.save_config(); self.apply_plot_styles(); settings_win.destroy()
+
+        tk.Button(settings_win, text=self.get_text("btn_save"), command=save_styles, 
+                  bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), width=15).pack(pady=20)
+
+    def pick_color(self, key, btn):
+        color = colorchooser.askcolor(initialcolor=btn["bg"])[1]
+        if color: btn.config(bg=color)
+
+    def apply_plot_styles(self):
+        # Update colors/styles for legend chips and plot lines
+        self.canvas_dark.config(bg=self.plot_styles["dark"]["color"])
+        self.canvas_ref.config(bg=self.plot_styles["ref"]["color"])
+        self.canvas_signal.config(bg=self.plot_styles["signal"]["color"])
+        
+        self.dark_line.set_color(self.plot_styles["dark"]["color"])
+        self.dark_line.set_linestyle(self.plot_styles["dark"]["style"])
+        self.dark_line.set_linewidth(self.plot_styles["dark"]["width"])
+        
+        self.ref_line.set_color(self.plot_styles["ref"]["color"])
+        self.ref_line.set_linestyle(self.plot_styles["ref"]["style"])
+        self.ref_line.set_linewidth(self.plot_styles["ref"]["width"])
+        
+        self.line.set_color(self.plot_styles["signal"]["color"])
+        self.line.set_linestyle(self.plot_styles["signal"]["style"])
+        self.line.set_linewidth(self.plot_styles["signal"]["width"])
+        self.canvas.draw_idle()
+
+    def update_ui_texts(self):
+        self.root.title(self.get_text("title"))
+        self.stop_btn.config(text=self.get_text("btn_stop"))
+        self.close_btn.config(text=self.get_text("btn_close"))
+        self.dark_btn.config(text=self.get_text("btn_dark"))
+        self.ref_btn.config(text=self.get_text("btn_ref"))
+        self.sample_btn.config(text=self.get_text("btn_sample"))
+        self.intensity_view_btn.config(text=self.get_text("btn_intensity_mode"))
+        self.trans_view_btn.config(text=self.get_text("btn_trans_mode"))
+        self.connect_btn.config(text=self.get_text("btn_connect"))
+        self.refresh_btn.config(text=self.get_text("btn_refresh"))
+        self.lbl_device_title.config(text=self.get_text("lbl_device"))
+        if self.trans_frame: self.trans_frame.config(text=self.get_text("lbl_transmission_workflow"))
+        
+        if self.origin_exe and os.path.exists(self.origin_exe):
+            self.open_origin_btn.config(text=self.get_text("btn_open_origin").format(version=self.origin_version), bg="#0078D7")
+        else:
+            self.open_origin_btn.config(text=self.get_text("btn_excel"), bg="#217346") # Excel Green
+            
+        self.open_records_btn.config(text=self.get_text("btn_open_records"))
+        self.monitor_btn.config(text=self.get_text("btn_monitor"))
+            
+        self.lbl_time_space.config(text=self.get_text("lbl_time_space"))
+        self.lbl_wait.config(text=self.get_text("lbl_wait"))
+        self.lbl_total_time.config(text=self.get_text("lbl_total_time"))
+        self.lbl_filename.config(text=self.get_text("lbl_filename"))
+        self.lbl_leg_dark.config(text=self.get_text("leg_dark"))
+        self.lbl_leg_ref.config(text=self.get_text("leg_ref"))
+        self.lbl_leg_signal.config(text=self.get_text("leg_signal"))
+        new_units = [self.get_text("unit_sec"), self.get_text("unit_min"), self.get_text("unit_hour")]
+        self.time_unit_combo['values'] = new_units
+        if not self.is_recording: self.status_label.config(text=self.get_text("lbl_status_monitoring"))
+        elif self.ref_spectrum is not None: self.status_label.config(text=self.get_text("lbl_status_sample"))
+        elif self.dark_spectrum is not None: self.status_label.config(text=self.get_text("lbl_status_ref"))
+        else: self.status_label.config(text=self.get_text("lbl_status_dark"))
+        self.ax.set_xlabel(self.get_text("plot_xlabel")); self.refresh_plot_visibility(); self.canvas.draw_idle()
+
+    def show_about(self):
+        about_win = tk.Toplevel(self.root)
+        about_win.title(self.get_text("menu_about"))
+        about_win.geometry("400x200")
+        about_win.resizable(False, False)
+        about_win.transient(self.root)
+        about_win.grab_set()
+
+        # Center
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        about_win.geometry(f"+{x}+{y}")
+
+        tk.Label(about_win, text=self.get_text("title"), font=("Arial", 11, "bold"), pady=10).pack()
+        
+        info_text = f"Developed by: Ahmet ÖZMEN\nVersion: {APP_VERSION}"
+        if self.lang == "tr": info_text = f"Hazırlayan: Ahmet ÖZMEN\nSürüm: {APP_VERSION}"
+        
+        tk.Label(about_win, text=info_text, pady=5).pack()
+        
+        link = tk.Label(about_win, text=GITHUB_URL, fg="blue", cursor="hand2", pady=10)
+        link.pack()
+        link.bind("<Button-1>", lambda e: subprocess.Popen(f'start {GITHUB_URL}', shell=True))
+
+        tk.Button(about_win, text=self.get_text("btn_close"), command=about_win.destroy, width=10).pack(pady=10)
+
+    def show_usage_guide(self):
+        guide_win = tk.Toplevel(self.root)
+        guide_win.title(self.get_text("menu_usage_guide"))
+        guide_win.geometry("600x650")
+        guide_win.minsize(500, 400)
+        
+        # UI Styling (Segoe UI if possible)
+        font_family = "Segoe UI" if sys.platform == "win32" else "Arial"
+        
+        main_frame = tk.Frame(guide_win, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        tk.Label(main_frame, text=self.get_text("menu_usage_guide"), font=(font_family, 14, "bold"), pady=10).pack()
+        
+        text_frame = tk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        text_area = tk.Text(text_frame, font=(font_family, 10), wrap=tk.WORD, yscrollcommand=scrollbar.set, padx=10, pady=10, relief=tk.FLAT, bg="#F5F5F5")
+        text_area.insert(tk.END, self.get_text("msg_help_content"))
+        text_area.config(state=tk.DISABLED) # Read only
+        text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        scrollbar.config(command=text_area.yview)
+        
+        tk.Button(main_frame, text=self.get_text("btn_close"), command=guide_win.destroy, bg="#455A64", fg="white", font=(font_family, 10, "bold"), width=15, relief=tk.FLAT).pack(pady=15)
+
+    def setup_ui(self):
+        control_panel = tk.Frame(self.root, pady=10); control_panel.pack(side=tk.TOP, fill=tk.X)
+        
+        # Connection Panel
+        conn_frame = tk.Frame(control_panel); conn_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(0, 10))
+        self.lbl_device_title = tk.Label(conn_frame, text=self.get_text("lbl_device"), font=("Arial", 11, "bold"))
+        self.lbl_device_title.pack(side=tk.LEFT, padx=5)
+        
+        self.device_combo = ttk.Combobox(conn_frame, state="readonly", width=30, font=("Segoe UI", 11))
+        self.device_combo.pack(side=tk.LEFT, padx=5)
+        
+        self.refresh_btn = tk.Button(conn_frame, text=self.get_text("btn_refresh"), command=self.refresh_devices, bg="#455A64", fg="white", font=("Segoe UI", 10), width=12, relief=tk.FLAT, activebackground="#546E7A", activeforeground="white")
+        self.refresh_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.connect_btn = tk.Button(conn_frame, text=self.get_text("btn_connect"), command=self.initialize_device, bg="#2E7D32", fg="white", font=("Segoe UI", 10, "bold"), width=12, relief=tk.FLAT, activebackground="#388E3C", activeforeground="white")
+        self.connect_btn.pack(side=tk.LEFT, padx=10)
+        
+        # Initial scan
+        self.root.after(500, self.refresh_devices)
+
+        btn_frame = tk.Frame(control_panel); btn_frame.pack(side=tk.TOP, fill=tk.X, padx=10)
+        self.stop_btn = tk.Button(btn_frame, text=self.get_text("btn_stop"), command=self.stop_acquisition, bg="#C62828", fg="white", font=("Segoe UI", 12, "bold"), width=12, state=tk.DISABLED, cursor="arrow", relief=tk.FLAT, activebackground="#D32F2F")
+        self.stop_btn.pack(side=tk.LEFT, padx=5)
+        self.intensity_view_btn = tk.Button(btn_frame, text=self.get_text("btn_intensity_mode"), command=lambda: self.switch_view_mode("Intensity"), bg="#37474F", fg="white", font=("Segoe UI", 11, "bold"), width=16, cursor="arrow", relief=tk.FLAT)
+        self.intensity_view_btn.pack(side=tk.LEFT, padx=(20, 5))
+        self.trans_view_btn = tk.Button(btn_frame, text=self.get_text("btn_trans_mode"), command=lambda: self.switch_view_mode("Transmission"), bg="#37474F", fg="white", font=("Segoe UI", 11, "bold"), width=16, cursor="arrow", relief=tk.FLAT)
+        self.trans_view_btn.pack(side=tk.LEFT, padx=5)
+        self.open_origin_btn = tk.Button(btn_frame, text=self.get_text("btn_open_origin"), command=self.open_last_in_origin, bg="#0D47A1", fg="white", font=("Segoe UI", 11, "bold"), width=16, cursor="arrow", relief=tk.FLAT)
+        self.open_origin_btn.pack(side=tk.LEFT, padx=(20, 5))
+        self.open_records_btn = tk.Button(btn_frame, text=self.get_text("btn_open_records"), command=self.open_records_folder, bg="#00695C", fg="white", font=("Segoe UI", 11, "bold"), width=14, cursor="arrow", relief=tk.FLAT)
+        self.open_records_btn.pack(side=tk.LEFT, padx=5)
+        self.monitor_btn = tk.Button(btn_frame, text=self.get_text("btn_monitor"), command=self.open_monitor, bg="#FBC02D", fg="black", font=("Segoe UI", 11, "bold"), width=12, cursor="arrow", relief=tk.FLAT)
+        self.monitor_btn.pack(side=tk.LEFT, padx=5)
+        self.lbl_mon_rec = tk.Label(btn_frame, text=self.get_text("lbl_monitor_rec_time", "Rec(s):"), font=("Segoe UI", 9))
+        self.lbl_mon_rec.pack(side=tk.LEFT, padx=(5, 0))
+        self.monitor_rec_time_var = tk.StringVar(value="0")
+        self.monitor_rec_entry = tk.Entry(btn_frame, textvariable=self.monitor_rec_time_var, width=5, font=("Segoe UI", 10), justify="center")
+        self.monitor_rec_entry.pack(side=tk.LEFT, padx=(2, 5))
+        self.close_btn = tk.Button(btn_frame, text=self.get_text("btn_close"), command=self.on_close, bg="#424242", fg="white", font=("Segoe UI", 12, "bold"), width=12, cursor="arrow", relief=tk.FLAT)
+        self.close_btn.pack(side=tk.RIGHT, padx=5)
+        self.trans_frame = tk.LabelFrame(control_panel, text=self.get_text("lbl_transmission_workflow", "Transmission Workflow"), pady=10, font=("Segoe UI", 10, "bold")); self.trans_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+        self.dark_btn = tk.Button(self.trans_frame, text=self.get_text("btn_dark"), command=self.measure_dark, bg="#6A1B9A", fg="white", font=("Segoe UI", 10, "bold"), width=15, cursor="arrow", relief=tk.FLAT)
+        self.dark_btn.pack(side=tk.LEFT, padx=10); self.ref_btn = tk.Button(self.trans_frame, text=self.get_text("btn_ref"), command=self.measure_reference, bg="#EF6C00", fg="white", font=("Segoe UI", 10, "bold"), width=15, state=tk.DISABLED, cursor="arrow", relief=tk.FLAT)
+        self.ref_btn.pack(side=tk.LEFT, padx=10); self.sample_btn = tk.Button(self.trans_frame, text=self.get_text("btn_sample"), command=self.measure_sample, bg="#1565C0", fg="white", font=("Segoe UI", 10, "bold"), width=15, state=tk.DISABLED, cursor="arrow", relief=tk.FLAT)
+        self.sample_btn.pack(side=tk.LEFT, padx=10); self.status_label = tk.Label(self.trans_frame, text=self.get_text("lbl_status_monitoring"), fg="#666", font=("Segoe UI", 9, "italic")); self.status_label.pack(side=tk.LEFT, padx=10)
+        # Gamry sync checkbox
+        self.gamry_var = tk.BooleanVar(value=False)
+        self.gamry_check = tk.Checkbutton(self.trans_frame, text=self.get_text("lbl_gamry_sync", "Gamry Sync"), variable=self.gamry_var, font=("Segoe UI", 9, "bold"), fg="#B71C1C", command=lambda: setattr(self, 'gamry_sync', self.gamry_var.get()))
+        self.gamry_check.pack(side=tk.RIGHT, padx=10)
+        params_frame = tk.Frame(control_panel, pady=10); params_frame.pack(side=tk.TOP, fill=tk.X, padx=10)
+        self.lbl_time_space = tk.Label(params_frame, text=self.get_text("lbl_time_space")); self.lbl_time_space.grid(row=0, column=0, sticky="e", padx=5)
+        self.time_space_entry = tk.Entry(params_frame, textvariable=self.time_space_var, width=8); self.time_space_entry.grid(row=0, column=1, padx=5)
+        self.lbl_wait = tk.Label(params_frame, text=self.get_text("lbl_wait")); self.lbl_wait.grid(row=0, column=2, sticky="e", padx=5)
+        self.wait_entry = tk.Entry(params_frame, textvariable=self.wait_ms_var, width=8); self.wait_entry.grid(row=0, column=3, padx=5)
+        self.lbl_total_time = tk.Label(params_frame, text=self.get_text("lbl_total_time")); self.lbl_total_time.grid(row=0, column=4, sticky="e", padx=5)
+        self.collect_time_entry = tk.Entry(params_frame, textvariable=self.collect_time_var, width=8); self.collect_time_entry.grid(row=0, column=5, padx=5)
+        self.time_unit_combo = ttk.Combobox(params_frame, textvariable=self.time_unit_var, values=[self.get_text("unit_sec"), self.get_text("unit_min"), self.get_text("unit_hour")], width=10, state="readonly"); self.time_unit_combo.grid(row=0, column=6, padx=5)
+        self.lbl_filename = tk.Label(params_frame, text=self.get_text("lbl_filename")); self.lbl_filename.grid(row=0, column=7, sticky="e", padx=5); self.filename_entry = tk.Entry(params_frame, textvariable=self.filename_var, width=15); self.filename_entry.grid(row=0, column=8, padx=5)
+        feedback_frame = tk.Frame(control_panel, pady=5); feedback_frame.pack(side=tk.TOP, fill=tk.X, padx=15); self.progress_var = tk.DoubleVar(); self.progress_bar = ttk.Progressbar(feedback_frame, variable=self.progress_var, maximum=100); self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10)); self.completion_label = tk.Label(feedback_frame, text="", font=("Arial", 10, "bold"), fg="#4CAF50"); self.completion_label.pack(side=tk.LEFT)
+
+        legend_frame = tk.Frame(self.root, pady=5); legend_frame.pack(side=tk.TOP, fill=tk.X, padx=15)
+        self.canvas_dark = tk.Canvas(legend_frame, width=20, height=10, bg=self.plot_styles["dark"]["color"], highlightthickness=0); self.canvas_dark.pack(side=tk.LEFT, padx=(0, 5))
+        self.lbl_leg_dark = tk.Label(legend_frame, text=self.get_text("leg_dark"), font=("Arial", 9)); self.lbl_leg_dark.pack(side=tk.LEFT, padx=(0, 20))
+        self.canvas_ref = tk.Canvas(legend_frame, width=20, height=10, bg=self.plot_styles["ref"]["color"], highlightthickness=0); self.canvas_ref.pack(side=tk.LEFT, padx=(0, 5))
+        self.lbl_leg_ref = tk.Label(legend_frame, text=self.get_text("leg_ref"), font=("Arial", 9)); self.lbl_leg_ref.pack(side=tk.LEFT, padx=(0, 20))
+        self.canvas_signal = tk.Canvas(legend_frame, width=20, height=10, bg=self.plot_styles["signal"]["color"], highlightthickness=0); self.canvas_signal.pack(side=tk.LEFT, padx=(0, 5))
+        self.lbl_leg_signal = tk.Label(legend_frame, text=self.get_text("leg_signal"), font=("Arial", 9, "bold")); self.lbl_leg_signal.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # Y-axis auto/manual toggle
+        ttk.Separator(legend_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        self.auto_y_var = tk.BooleanVar(value=True)
+        self.auto_y_check = tk.Checkbutton(legend_frame, text=self.get_text("lbl_auto_y", "Auto Y"), variable=self.auto_y_var, command=self.toggle_y_scale, font=("Segoe UI", 9))
+        self.auto_y_check.pack(side=tk.LEFT, padx=(5, 5))
+        self.lbl_ymin = tk.Label(legend_frame, text="Y-Min:", font=("Arial", 8)); self.lbl_ymin.pack(side=tk.LEFT)
+        self.ymin_var = tk.StringVar(value="-100")
+        self.ymin_entry = tk.Entry(legend_frame, textvariable=self.ymin_var, width=7, font=("Arial", 9), state=tk.DISABLED); self.ymin_entry.pack(side=tk.LEFT, padx=(2, 5))
+        self.lbl_ymax_main = tk.Label(legend_frame, text="Y-Max:", font=("Arial", 8)); self.lbl_ymax_main.pack(side=tk.LEFT)
+        self.ymax_main_var = tk.StringVar(value="65535")
+        self.ymax_main_entry = tk.Entry(legend_frame, textvariable=self.ymax_main_var, width=7, font=("Arial", 9), state=tk.DISABLED); self.ymax_main_entry.pack(side=tk.LEFT, padx=(2, 5))
+        self.ymin_entry.bind("<Return>", lambda e: self.apply_manual_y())
+        self.ymax_main_entry.bind("<Return>", lambda e: self.apply_manual_y())
+        
+        self.fig = Figure(figsize=(8, 6), dpi=100); self.ax = self.fig.add_subplot(111); self.ax.grid(True)
+        self.dark_line, = self.ax.plot([], [], lw=self.plot_styles["dark"]["width"], color=self.plot_styles["dark"]["color"], ls=self.plot_styles["dark"]["style"], alpha=0.7)
+        self.ref_line, = self.ax.plot([], [], lw=self.plot_styles["ref"]["width"], color=self.plot_styles["ref"]["color"], ls=self.plot_styles["ref"]["style"], alpha=0.7)
+        self.line, = self.ax.plot([], [], lw=self.plot_styles["signal"]["width"], color=self.plot_styles["signal"]["color"], ls=self.plot_styles["signal"]["style"])
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root); self.canvas.draw(); self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        
+        # Double-click on graph to set Y limits manually
+        self.canvas.mpl_connect('button_press_event', self.on_graph_click)
+
+    def set_busy_cursor(self, busy):
+        cursor = "watch" if busy else ""; self.root.config(cursor=cursor); self.root.update_idletasks()
+
+    def refresh_devices(self):
+        self.set_busy_cursor(True)
+        try:
+            with self.device_lock:
+                device_count = self.api.find_usb_devices()
+                print(f"[DeviceScan] USB devices found by SDK: {device_count}")
+                if device_count == 0:
+                    self.available_devices = []
+                    self.device_combo['values'] = [self.get_text("msg_no_device", "No devices found")]
+                    self.device_combo.current(0)
+                    self.connect_btn.config(state=tk.DISABLED)
+                else:
+                    device_ids = self.api.get_device_ids()
+                    print(f"[DeviceScan] Device IDs: {device_ids}")
+                    self.available_devices = []
+                    combo_values = []
+                    for d_id in device_ids:
+                        try:
+                            temp_device = self.api.open_device(d_id)
+                            model = temp_device.get_model()
+                            serial = temp_device.get_serial_number()
+                            print(f"[DeviceScan] Found: ID={d_id}, Model={model}, Serial={serial}")
+                            # Do NOT call close_device here, it invalidates the ID in this SDK
+                            self.available_devices.append((d_id, model, serial))
+                            combo_values.append(f"{model} ({serial})")
+                        except Exception as dev_err:
+                            print(f"[DeviceScan] Error opening device ID {d_id}: {dev_err}")
+                    
+                    if combo_values:
+                        self.device_combo['values'] = combo_values
+                        self.device_combo.current(0)
+                        self.connect_btn.config(state=tk.NORMAL)
+                    else:
+                        self.device_combo['values'] = [self.get_text("msg_no_device", "No devices found")]
+                        self.device_combo.current(0)
+                        self.connect_btn.config(state=tk.DISABLED)
+        except Exception as e:
+            print(f"[DeviceScan] Refresh error: {e}")
+        finally:
+            self.set_busy_cursor(False)
+
+    def initialize_device(self):
+        selection_idx = self.device_combo.current()
+        if selection_idx < 0 or not self.available_devices:
+            messagebox.showwarning("Device", self.get_text("msg_select_device", "Please select a device first."))
+            return
+
+        selected_id = self.available_devices[selection_idx][0]
+        print(f"[Connect] Connecting to device ID: {selected_id}")
+        self.set_busy_cursor(True)
+        try:
+            with self.device_lock:
+                self.device = self.api.open_device(selected_id)
+                self.device_model = self.device.get_model()
+                self.device_serial = self.device.get_serial_number()
+                self.wavelengths = self.device.get_wavelengths()
+                self.device_combo.config(state=tk.DISABLED)
+                self.refresh_btn.config(state=tk.DISABLED)
+                self.connect_btn.config(state=tk.DISABLED, bg="#888")
+            # Show connected device model in title bar
+            self.root.title(f"{self.get_text('title')} — {self.device_model} ({self.device_serial})")
+            print(f"[Connect] Connected: {self.device_model} ({self.device_serial}), {len(self.wavelengths)} pixels")
+            self.ax.set_xlim(min(self.wavelengths), max(self.wavelengths)); self.refresh_plot_visibility(); self.start_acquisition(is_recording=False)
+        except OceanDirectError as e:
+            messagebox.showerror("Error", f"Connection failed: {e}")
+        except Exception as e:
+            print(f"[Connect] Unexpected error: {e}")
+            messagebox.showerror("Error", f"Connection failed: {e}")
+        finally:
+            self.set_busy_cursor(False)
+
+    def setup_simulation(self):
+        self.wavelengths = np.linspace(340, 1020, 3648); self.ax.set_xlim(340, 1020); self.refresh_plot_visibility(); self.start_acquisition(is_recording=False)
+
+    def set_inputs_state(self, state):
+        for w in [self.time_space_entry, self.wait_entry, self.collect_time_entry, self.time_unit_combo, self.filename_entry]: w.config(state=state)
+
+    def measure_dark(self):
+        self.set_busy_cursor(True)
+        if self.running: self.stop_requested = True; self.running = False; time.sleep(0.6)
+        messagebox.showinfo(self.get_text("msg_dark_title"), self.get_text("msg_dark_text"))
+        try:
+            with self.device_lock:
+                if self.device: self.dark_spectrum = np.array(self.device.get_spectrum())
+                else: self.dark_spectrum = np.random.normal(1000, 50, len(self.wavelengths))
+            self.save_calibration_to_csv("dark_calibration", self.dark_spectrum); self.dark_line.set_data(self.wavelengths, self.dark_spectrum)
+            self.dark_line.set_visible(self.view_mode == "Intensity"); self.canvas.draw()
+            self.status_label.config(text=self.get_text("lbl_status_ref"), fg="#FF9800"); self.ref_btn.config(state=tk.NORMAL)
+        except Exception as e: messagebox.showerror("Error", str(e))
+        self.start_acquisition(is_recording=False); self.set_busy_cursor(False)
+
+    def measure_reference(self):
+        if self.dark_spectrum is None: return
+        self.set_busy_cursor(True)
+        if self.running: self.stop_requested = True; self.running = False; time.sleep(0.6)
+        messagebox.showinfo(self.get_text("msg_ref_title"), self.get_text("msg_ref_text"))
+        try:
+            with self.device_lock:
+                if self.device: self.ref_spectrum = np.array(self.device.get_spectrum())
+                else:
+                    self.ref_spectrum = np.random.normal(40000, 500, len(self.wavelengths))
+                    self.ref_spectrum += 10000 * np.sin(self.wavelengths/100)
+            self.save_calibration_to_csv("ref_calibration", self.ref_spectrum); self.ref_line.set_data(self.wavelengths, self.ref_spectrum)
+            self.ref_line.set_visible(self.view_mode == "Intensity"); self.canvas.draw()
+            self.status_label.config(text=self.get_text("lbl_status_sample"), fg="#2196F3"); self.sample_btn.config(state=tk.NORMAL)
+        except Exception as e: messagebox.showerror("Error", str(e))
+        self.start_acquisition(is_recording=False); self.set_busy_cursor(False)
+
+    def save_calibration_to_csv(self, type_name, spectrum):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); filename = f"{type_name}_{timestamp}.csv"; full_path = os.path.join(self.save_path, filename); self.last_saved_file = full_path; self.save_config()
+        if not os.path.exists(self.save_path): os.makedirs(self.save_path)
+        try:
+            with open(full_path, mode='w', newline='') as file:
+                writer = csv.writer(file); writer.writerow(['Wavelength', 'Intensity'])
+                for w, i in zip(self.wavelengths, spectrum): writer.writerow([f"{w:.2f}", f"{i:.2f}"])
+        except Exception as e: print(f"File error: {e}")
+
+    def measure_sample(self):
+        if self.ref_spectrum is None: return
+        self.set_busy_cursor(True); self.stop_requested = True; self.running = False; time.sleep(0.6); self.mode = "Transmission"; self.view_mode = "Transmission"; self.start_acquisition(is_recording=True)
+
+    def switch_view_mode(self, mode):
+        self.view_mode = mode; self.refresh_plot_visibility(); self.canvas.draw_idle()
+
+    def refresh_plot_visibility(self):
+        if self.view_mode == "Intensity":
+            self.intensity_view_btn.config(relief=tk.SUNKEN, bg="#455A64"); self.trans_view_btn.config(relief=tk.RAISED, bg="#607D8B")
+            self.ax.set_title(self.get_text("plot_title")); self.ax.set_ylabel(self.get_text("plot_ylabel")); self.ax.set_ylim(-100, 65535)
+            self.dark_line.set_visible(self.dark_spectrum is not None); self.ref_line.set_visible(self.ref_spectrum is not None)
+            if self.dark_spectrum is not None: self.dark_line.set_data(self.wavelengths, self.dark_spectrum)
+            if self.ref_spectrum is not None: self.ref_line.set_data(self.wavelengths, self.ref_spectrum)
+        else:
+            self.intensity_view_btn.config(relief=tk.RAISED, bg="#607D8B"); self.trans_view_btn.config(relief=tk.SUNKEN, bg="#455A64")
+            self.ax.set_title(self.get_text("plot_trans_title")); self.ax.set_ylabel("Transmission (%)"); self.ax.set_ylim(-10, 110)
+            self.dark_line.set_visible(False); self.ref_line.set_visible(False)
+
+    def start_acquisition(self, is_recording=False):
+        if not self.running:
+            self.is_recording = is_recording
+            if is_recording:
+                try:
+                    self.t_space = float(self.time_space_var.get()); self.w_ms = float(self.wait_ms_var.get()); raw_time = float(self.collect_time_var.get()); unit = self.time_unit_var.get()
+                    is_min = any(l.get("unit_min") == unit for l in self.translations.values()); is_hour = any(l.get("unit_hour") == unit for l in self.translations.values())
+                    self.c_time = raw_time * 60 if is_min else (raw_time * 3600 if is_hour else raw_time); self.fname = self.filename_var.get().strip()
+                    if not self.fname: raise ValueError(self.get_text("err_fname_empty"))
+                except ValueError as e: messagebox.showerror(self.get_text("err_param"), str(e)); self.set_busy_cursor(False); return
+                self.stop_btn.config(state=tk.NORMAL); self.set_inputs_state(tk.DISABLED); self.dark_btn.config(state=tk.DISABLED); self.ref_btn.config(state=tk.DISABLED); self.sample_btn.config(state=tk.DISABLED); self.status_label.config(text=self.get_text("lbl_status_running"), fg="#4CAF50")
+                # Trigger Gamry Framework if sync enabled
+                if self.gamry_sync:
+                    self.trigger_gamry()
+            else:
+                self.t_space = 0.5; self.w_ms = 0; self.status_label.config(text=self.get_text("lbl_status_monitoring"), fg="#666")
+            self.running = True; self.stop_requested = False; self.completion_label.config(text=""); self.progress_var.set(0); self.thread = threading.Thread(target=self.acquisition_loop, daemon=True); self.thread.start()
+
+    def stop_acquisition(self):
+        self.set_busy_cursor(False); self.stop_requested = True; self.running = False; self.is_recording = False
+        self.stop_btn.config(state=tk.DISABLED); self.set_inputs_state(tk.NORMAL); self.dark_btn.config(state=tk.NORMAL)
+        if self.dark_spectrum is not None: self.ref_btn.config(state=tk.NORMAL)
+        if self.ref_spectrum is not None: self.sample_btn.config(state=tk.NORMAL)
+        self.root.after(800, lambda: self.start_acquisition(is_recording=False))
+
+    def trigger_gamry(self):
+        """Find Gamry Framework window and send F5 to trigger Run."""
+        try:
+            user32 = ctypes.windll.user32
+            EnumWindows = user32.EnumWindows
+            GetWindowTextW = user32.GetWindowTextW
+            GetWindowTextLengthW = user32.GetWindowTextLengthW
+            IsWindowVisible = user32.IsWindowVisible
+            SetForegroundWindow = user32.SetForegroundWindow
+            PostMessageW = user32.PostMessageW
+            
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+            gamry_hwnd = None
+            
+            def enum_callback(hwnd, lParam):
+                nonlocal gamry_hwnd
+                if IsWindowVisible(hwnd):
+                    length = GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buf = ctypes.create_unicode_buffer(length + 1)
+                        GetWindowTextW(hwnd, buf, length + 1)
+                        title = buf.value
+                        if "gamry" in title.lower() and "framework" in title.lower():
+                            gamry_hwnd = hwnd
+                            return False  # Stop enumeration
+                return True
+            
+            EnumWindows(WNDENUMPROC(enum_callback), 0)
+            
+            if gamry_hwnd:
+                # Bring Gamry to foreground and send F5
+                SetForegroundWindow(gamry_hwnd)
+                time.sleep(0.3)  # Small delay for window activation
+                WM_KEYDOWN = 0x0100
+                WM_KEYUP = 0x0101
+                VK_F5 = 0x74
+                PostMessageW(gamry_hwnd, WM_KEYDOWN, VK_F5, 0)
+                time.sleep(0.05)
+                PostMessageW(gamry_hwnd, WM_KEYUP, VK_F5, 0)
+                print("[Gamry] F5 sent to Gamry Framework")
+            else:
+                messagebox.showwarning("Gamry", self.get_text("err_gamry_not_found", "Gamry Framework window not found. Make sure it is open."))
+        except Exception as e:
+            print(f"[Gamry] Error: {e}")
+            messagebox.showerror("Gamry", f"Gamry trigger failed: {e}")
+
+    def acquisition_loop(self):
+        start_time = time.time(); index_counter = 0
+        
+        # Ensure wavelengths exist for simulation or monitor indexing
+        if self.wavelengths is None:
+            self.wavelengths = np.linspace(200, 1100, 3648)
+            self.root.after(0, lambda: self.ax.set_xlim(200, 1100))
+            
+        if self.is_recording and self.w_ms > 0: time.sleep(self.w_ms / 1000.0)
+        file = None; writer = None
+        if self.is_recording:
+            start_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); csv_filename = f"{self.fname}_{self.mode}_{start_timestamp}.csv"; full_path = os.path.join(self.save_path, csv_filename); self.last_saved_file = full_path; self.save_config()
+            if not os.path.exists(self.save_path): os.makedirs(self.save_path)
+            try:
+                file = open(full_path, mode='w', newline=''); writer = csv.writer(file)
+                label = "Time (s)" if self.log_format == "ElapsedTime" else ("Index" if self.log_format == "Sequential" else "Timestamp")
+                writer.writerow([label] + [f"{w:.2f}" for w in self.wavelengths])
+            except Exception as e: print(f"File error: {e}"); return
+        next_sample_time = time.time()
+        while not self.stop_requested:
+            current_time = time.time()
+            if self.is_recording:
+                elapsed = current_time - start_time; progress = min((elapsed / self.c_time) * 100, 100); self.root.after(0, self.progress_var.set, progress)
+                if elapsed >= self.c_time: self.root.after(0, self.completion_label.config, {"text": self.get_text("msg_finished")}); self.root.after(0, self.set_busy_cursor, False); break
+            if current_time >= next_sample_time:
+                try:
+                    with self.device_lock:
+                        if self.device: spectrum = np.array(self.device.get_spectrum())
+                        else:
+                            spectrum = np.random.normal(20000, 300, len(self.wavelengths)); spectrum *= (1 - 0.8 * np.exp(-((self.wavelengths - 500)**2) / 5000))
+                    if spectrum is not None:
+                        intensity_val = spectrum; trans_val = None
+                        if self.dark_spectrum is not None and self.ref_spectrum is not None:
+                            denom = (self.ref_spectrum - self.dark_spectrum); denom[denom == 0] = 1; trans_val = ((spectrum - self.dark_spectrum) / denom) * 100.0
+                        plot_data = trans_val if (self.view_mode == "Transmission" and trans_val is not None) else intensity_val
+                        if self.is_recording and writer:
+                            index_counter += 1
+                            if self.log_format == "ElapsedTime":
+                                key = f"{(index_counter - 1) * self.t_space:.3f}"
+                            elif self.log_format == "Sequential":
+                                key = str(index_counter)
+                            else:
+                                key = datetime.now().isoformat()
+                            
+                            save_data = trans_val if (self.mode == "Transmission" and trans_val is not None) else intensity_val
+                            writer.writerow([key] + list(save_data)); file.flush()
+                        self.root.after(0, self.update_plot, plot_data)
+                        # Broadcast to monitors
+                        if self.monitors:
+                            for mon in self.monitors:
+                                self.root.after(0, mon.update_data, self.wavelengths, plot_data)
+                    next_sample_time += self.t_space
+                except Exception as e: print(f"Loop error: {e}"); break
+            time.sleep(0.01)
+        if file: file.close()
+        if self.is_recording: self.root.after(0, self.stop_acquisition)
+        else: self.running = False
+
+    def open_monitor(self):
+        try:
+            rec_time = float(self.monitor_rec_time_var.get())
+        except:
+            rec_time = 0.0
+        mon = WavelengthMonitor(self.root, self, rec_time)
+        self.monitors.append(mon)
+
+    def open_records_folder(self):
+        if os.path.exists(self.save_path):
+            try:
+                os.startfile(self.save_path)
+            except Exception as e: messagebox.showerror("Error", f"Could not open folder: {e}")
+        else: messagebox.showwarning("Warning", "Save folder does not exist.")
+
+    def open_last_in_origin(self):
+        if self.is_recording:
+            messagebox.showwarning("Warning", "Measurement in progress. Please wait until finished.")
+            return
+
+        target_file = self.last_saved_file
+        
+        # Eğer hafızada kayıt yoksa veya dosya silindiyse klasördeki en yeniyi bul
+        if not target_file or not os.path.exists(target_file):
+            if os.path.exists(self.save_path):
+                files = [os.path.join(self.save_path, f) for f in os.listdir(self.save_path) if f.lower().endswith('.csv')]
+                if files:
+                    # mtime (modification time) daha güvenli, ctime (creation) bazen garip davranabilir
+                    target_file = max(files, key=os.path.getmtime)
+        
+        if target_file and os.path.exists(target_file):
+            target_file = os.path.abspath(target_file)
+            try:
+                if self.origin_exe and os.path.exists(self.origin_exe):
+                    # Origin'i doğrudan CSV dosyasıyla aç (proje dosyası gerektirmez)
+                    # -oc ve LabTalk komutu kullanmak Origin'in mevcut proje dizinine
+                    # bağımlı olmasına ve "project does not exist" hatasına yol açar.
+                    subprocess.Popen([self.origin_exe, target_file])
+                else:
+                    os.startfile(target_file)
+            except Exception as e: 
+                messagebox.showerror("Error", f"Could not open file: {e}")
+        else: 
+            messagebox.showwarning("Warning", self.get_text("msg_no_measurements") if hasattr(self, 'get_text') else "No measurement file found.")
+
+    def toggle_y_scale(self):
+        self.auto_y_scale = self.auto_y_var.get()
+        state = tk.DISABLED if self.auto_y_scale else tk.NORMAL
+        self.ymin_entry.config(state=state)
+        self.ymax_main_entry.config(state=state)
+        if not self.auto_y_scale:
+            # Set current limits to entries
+            curr = self.ax.get_ylim()
+            self.ymin_var.set(f"{curr[0]:.0f}")
+            self.ymax_main_var.set(f"{curr[1]:.0f}")
+    
+    def apply_manual_y(self):
+        try:
+            ymin = float(self.ymin_var.get())
+            ymax = float(self.ymax_main_var.get())
+            if ymin < ymax:
+                self.ax.set_ylim(ymin, ymax)
+                self.canvas.draw_idle()
+        except ValueError:
+            pass
+    
+    def on_graph_click(self, event):
+        """Double-click on graph to set Y-axis limits via dialog."""
+        if event.dblclick and event.inaxes == self.ax:
+            self.auto_y_var.set(False)
+            self.toggle_y_scale()
+            # Open a small dialog for Y-min/Y-max
+            diag = tk.Toplevel(self.root)
+            diag.title(self.get_text("lbl_set_y", "Set Y-Axis Limits"))
+            diag.geometry("280x120")
+            diag.transient(self.root); diag.grab_set()
+            x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 140
+            y_pos = self.root.winfo_y() + (self.root.winfo_height() // 2) - 60
+            diag.geometry(f"+{x}+{y_pos}")
+            
+            tk.Label(diag, text="Y-Min:", font=("Arial", 10)).grid(row=0, column=0, padx=10, pady=10, sticky="e")
+            ymin_e = tk.Entry(diag, width=10, font=("Arial", 11)); ymin_e.grid(row=0, column=1, padx=5, pady=10)
+            ymin_e.insert(0, self.ymin_var.get())
+            tk.Label(diag, text="Y-Max:", font=("Arial", 10)).grid(row=1, column=0, padx=10, sticky="e")
+            ymax_e = tk.Entry(diag, width=10, font=("Arial", 11)); ymax_e.grid(row=1, column=1, padx=5)
+            ymax_e.insert(0, self.ymax_main_var.get())
+            
+            def apply():
+                self.ymin_var.set(ymin_e.get())
+                self.ymax_main_var.set(ymax_e.get())
+                self.apply_manual_y()
+                diag.destroy()
+            
+            tk.Button(diag, text=self.get_text("btn_save", "Save"), command=apply, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), width=10).grid(row=2, column=0, columnspan=2, pady=10)
+
+    def update_plot(self, data):
+        self.line.set_data(self.wavelengths, data)
+        if self.auto_y_scale and self.view_mode == "Intensity":
+            max_val = np.max(data)
+            if max_val > 0:
+                curr = self.ax.get_ylim()
+                if max_val > curr[1] * 0.9 or max_val < curr[1] * 0.3: self.ax.set_ylim(-100, max_val * 1.2)
+        elif not self.auto_y_scale:
+            self.apply_manual_y()
+        self.canvas.draw_idle()
+
+    def open_driver_setup(self):
+        DriverInstallationDialog(self.root, self)
+
+    def on_close(self):
+        self.stop_requested = True; self.running = False
+        if self.device:
+            with self.device_lock:
+                try: 
+                    self.device.close_device()
+                except: pass
+        try:
+            self.api.shutdown()
+        except: pass
+        self.root.destroy()
+
+class DriverInstallationDialog:
+    def __init__(self, parent, gui):
+        self.gui = gui
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title(gui.get_text("msg_driver_dialog_title", "Choose Spectrometer Driver"))
+        self.dialog.geometry("550x450")
+        self.dialog.grab_set()
+        
+        main_frame = tk.Frame(self.dialog, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        tk.Label(main_frame, text=gui.get_text("msg_driver_dialog_title", "Choose Spectrometer Driver"), font=("Arial", 12, "bold")).pack(pady=(0, 10))
+        
+        list_frame = tk.Frame(main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.scrollbar = tk.Scrollbar(list_frame)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.listbox = tk.Listbox(list_frame, font=("Arial", 10), yscrollcommand=self.scrollbar.set)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.config(command=self.listbox.yview)
+        
+        # Scan for drivers
+        self.drivers = [] # list of (display_name, full_path)
+        self.scan_drivers()
+        
+        for name, _ in self.drivers:
+            self.listbox.insert(tk.END, name)
+            
+        # Row 1: Driver buttons
+        btn_frame1 = tk.Frame(main_frame, pady=5)
+        btn_frame1.pack(fill=tk.X)
+        
+        tk.Button(btn_frame1, text=gui.get_text("menu_setup_drivers", "Install Driver"), command=self.install_selected, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame1, text=gui.get_text("btn_fetch_drivers", "Fetch All Drivers"), command=self.fetch_all_drivers, bg="#FF9800", fg="white", font=("Arial", 10, "bold"), width=20).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame1, text=gui.get_text("btn_close", "Close"), command=self.dialog.destroy, width=10).pack(side=tk.RIGHT, padx=5)
+        
+        # Row 2: SDK install buttons
+        btn_frame2 = tk.Frame(main_frame, pady=5)
+        btn_frame2.pack(fill=tk.X)
+        
+        tk.Button(btn_frame2, text=gui.get_text("btn_install_oceandirect", "OceanDirect SDK Kur"), command=self.install_oceandirect, bg="#0D47A1", fg="white", font=("Arial", 10, "bold"), width=20).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame2, text=gui.get_text("btn_install_omnidriver", "OmniDriver Kur"), command=self.install_omnidriver, bg="#2196F3", fg="white", font=("Arial", 10, "bold"), width=20).pack(side=tk.LEFT, padx=5)
+
+    def scan_drivers(self):
+        winusb_path = os.path.join(os.getcwd(), "winusb")
+        folders = ["winusb_driver", "winusb_driver_offline"]
+        
+        self.drivers = []
+        for folder in folders:
+            folder_path = os.path.join(winusb_path, folder)
+            if not os.path.exists(folder_path): continue
+            
+            for file in os.listdir(folder_path):
+                if file.lower().endswith(".inf"):
+                    display_name = f"{folder} / {file}"
+                    full_path = os.path.join(folder_path, file)
+                    self.drivers.append((display_name, full_path))
+        
+        # Refresh listbox
+        if hasattr(self, 'listbox'):
+            self.listbox.delete(0, tk.END)
+            for name, _ in self.drivers:
+                self.listbox.insert(tk.END, name)
+            if not self.drivers:
+                self.listbox.insert(tk.END, "No drivers found. Click 'Fetch All Drivers'.")
+
+    def fetch_all_drivers(self):
+        # Full WinUSB driver pack (usually as a zip on GitHub for easier download)
+        zip_url = GITHUB_URL + "/raw/main/winusb/winusb_pack.zip"
+        winusb_path = os.path.join(os.getcwd(), "winusb")
+        target_zip = os.path.join(winusb_path, "winusb_pack.zip")
+        
+        if not os.path.exists(winusb_path): os.makedirs(winusb_path)
+
+        def on_success():
+            try:
+                # Extract zip into winusb_driver subdirectory
+                winusb_driver_path = os.path.join(winusb_path, "winusb_driver")
+                if not os.path.exists(winusb_driver_path): os.makedirs(winusb_driver_path)
+                
+                import zipfile
+                with zipfile.ZipFile(target_zip, 'r') as zip_ref:
+                    zip_ref.extractall(winusb_driver_path)
+                
+                os.remove(target_zip)
+                messagebox.showinfo("Success", self.gui.get_text("msg_drivers_success"))
+                self.gui.root.after(0, self.scan_drivers)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to extract drivers: {e}")
+
+        self.gui.start_download(zip_url, target_zip, self.gui.get_text("msg_downloading_drivers"), on_success)
+
+    def install_selected(self):
+        idx = self.listbox.curselection()
+        if not idx: return
+        
+        _, inf_path = self.drivers[idx[0]]
+        
+        confirm = messagebox.askyesno("Confirm", f"Attempting to install:\n{inf_path}\n\nThis REQUIRES Administrator rights. Proceed?")
+        if not confirm: return
+        
+        self.gui.set_busy_cursor(True)
+        try:
+            ps_cmd = f'Start-Process -FilePath "pnputil" -ArgumentList "/add-driver", """{inf_path}""", "/install" -Verb RunAs -Wait'
+            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
+            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
+            
+            if result.returncode == 0:
+                messagebox.showinfo("Success", self.gui.get_text("msg_install_success"))
+            else:
+                messagebox.showwarning("Notice", f"PNPUtil returned {result.returncode}")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+        finally:
+            self.gui.set_busy_cursor(False)
+
+    def install_omnidriver(self):
+        installer_path = os.path.join(os.getcwd(), "winusb", "OmniDriver-2.80-win64-installer.exe")
+        
+        if os.path.exists(installer_path):
+            confirm = messagebox.askyesno("Confirm", f"Found OmniDriver installer. Run now?\n{installer_path}")
+            if confirm:
+                ps_cmd = f'Start-Process -FilePath "{installer_path}" -Verb RunAs'
+                subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd], creationflags=0x08000000)
+            return
+
+        # Use URL from version.json if fetched, else fallback to hardcoded
+        omni_url = getattr(self.gui, 'omni_url', "")
+        if not omni_url:
+            omni_url = "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe"
+        
+        def on_success():
+            ps_cmd = f'Start-Process -FilePath "{installer_path}" -Verb RunAs'
+            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
+            subprocess.run(cmd, creationflags=0x08000000)
+            messagebox.showinfo("Success", self.gui.get_text("msg_install_success"))
+
+        self.gui.start_download(omni_url, installer_path, self.gui.get_text("msg_downloading_omni"), on_success)
+
+    def install_oceandirect(self):
+        """OceanDirect SDK kurulumu — yerel installer varsa çalıştır, yoksa indirme sayfasına yönlendir."""
+        # Check for local OceanDirect installer
+        winusb_path = os.path.join(os.getcwd(), "winusb")
+        local_installer = None
+        if os.path.exists(winusb_path):
+            for f in os.listdir(winusb_path):
+                if f.lower().startswith("oceandirect") and f.lower().endswith(".exe"):
+                    local_installer = os.path.join(winusb_path, f)
+                    break
+        
+        if local_installer and os.path.exists(local_installer):
+            confirm = messagebox.askyesno("OceanDirect SDK", 
+                self.gui.get_text("msg_oceandirect_found", "OceanDirect SDK installer found. Run now?") + f"\n{local_installer}")
+            if confirm:
+                ps_cmd = f'Start-Process -FilePath "{local_installer}" -Verb RunAs'
+                subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd], creationflags=0x08000000)
+            return
+        
+        # Check for OceanDirect SDK URL from version.json
+        od_url = getattr(self.gui, 'oceandirect_url', '')
+        if od_url:
+            installer_name = od_url.split('/')[-1] if '/' in od_url else 'OceanDirect-SDK-Setup.exe'
+            target_path = os.path.join(winusb_path, installer_name)
+            if not os.path.exists(winusb_path): os.makedirs(winusb_path)
+            
+            def on_success():
+                ps_cmd = f'Start-Process -FilePath "{target_path}" -Verb RunAs'
+                cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd]
+                subprocess.run(cmd, creationflags=0x08000000)
+                messagebox.showinfo("Success", self.gui.get_text("msg_install_success"))
+            
+            self.gui.start_download(od_url, target_path, self.gui.get_text("msg_downloading_oceandirect", "Downloading OceanDirect SDK..."), on_success)
+            return
+        
+        # No local installer and no URL — open Ocean Insight website
+        messagebox.showinfo("OceanDirect SDK", 
+            self.gui.get_text("msg_oceandirect_web", 
+            "OceanDirect SDK installer not found locally.\n\nThe download page will now open. Download the installer and place it in the 'winusb' folder, then try again."))
+        subprocess.Popen('start https://www.oceanoptics.com/software-downloads/', shell=True)
+
+class WavelengthMonitor:
+    def __init__(self, parent, gui, record_time=0.0):
+        self.gui = gui
+        self.window = tk.Toplevel(parent)
+        self.window.title(gui.get_text("monitor_title", "Wavelength Monitor"))
+        self.window.geometry("550x570")
+        
+        # History data
+        self.history_x = []
+        self.history_y = []
+        self.start_time = time.time()
+        self.max_points = 100
+        self.record_duration = record_time
+        self.recording_done = False
+        self.frozen_x = []
+        self.frozen_y = []
+        
+        main_frame = tk.Frame(self.window, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Input section
+        input_frame = tk.Frame(main_frame)
+        input_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        tk.Label(input_frame, text=gui.get_text("lbl_monitor_wavelength", "Wavelength (nm):"), font=("Arial", 10)).grid(row=0, column=0, sticky="w")
+        self.wl_var = tk.StringVar(value="500.0")
+        self.entry = tk.Entry(input_frame, textvariable=self.wl_var, font=("Arial", 11), width=8, justify="center")
+        self.entry.grid(row=0, column=1, padx=5)
+        
+        tk.Label(input_frame, text=gui.get_text("lbl_monitor_ymax", "Y-Max:"), font=("Arial", 10)).grid(row=0, column=2, sticky="w", padx=(10, 0))
+        self.ymax_var = tk.StringVar(value="110.0")
+        self.ymax_entry = tk.Entry(input_frame, textvariable=self.ymax_var, font=("Arial", 11), width=8, justify="center")
+        self.ymax_entry.grid(row=0, column=3, padx=5)
+        
+        self.val_label = tk.Label(input_frame, text="---", font=("Arial", 16, "bold"), fg="#D32F2F")
+        self.val_label.grid(row=0, column=4, padx=(20, 0))
+        
+        # Recording status bar
+        if self.record_duration > 0:
+            self.rec_status_label = tk.Label(main_frame, 
+                text=gui.get_text("lbl_monitor_recording", "Recording") + f" ({self.record_duration:.0f}s)", 
+                font=("Arial", 10, "bold"), fg="#D32F2F")
+            self.rec_status_label.pack(fill=tk.X, pady=(0, 5))
+        else:
+            self.rec_status_label = tk.Label(main_frame, text="", font=("Arial", 10, "bold"))
+            self.rec_status_label.pack(fill=tk.X)
+        
+        # Plot section
+        self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_title("Wavelength Trend")
+        self.ax.set_xlabel("Time (s)")
+        self.ax.grid(True)
+        self.line, = self.ax.plot([], [], lw=2, color="#2196F3")
+        self.rec_line, = self.ax.plot([], [], lw=2, color="#E91E63", alpha=0.5)  # Recorded data (stays)
+        
+        self.canvas = FigureCanvasTkAgg(self.fig, master=main_frame)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def update_data(self, wavelengths, data):
+        try:
+            target_wl = float(self.wl_var.get())
+            val = np.interp(target_wl, wavelengths, data)
+            self.val_label.config(text=f"{val:.3f}")
+            
+            cur_time = time.time() - self.start_time
+            self.history_x.append(cur_time)
+            self.history_y.append(val)
+            
+            # Use record_duration set at creation from main UI
+            rec_dur = self.record_duration
+            
+            if rec_dur > 0 and cur_time <= rec_dur:
+                # Recording phase: keep ALL data, don't slide
+                remaining = rec_dur - cur_time
+                self.rec_status_label.config(
+                    text=self.gui.get_text("lbl_monitor_recording", "Recording") + f" ({remaining:.1f}s)", 
+                    fg="#D32F2F")
+                self.recording_done = False
+                self.line.set_data(self.history_x, self.history_y)
+                self.rec_line.set_data([], [])  # No frozen data yet
+            elif rec_dur > 0 and not self.recording_done:
+                # Recording just finished: freeze recorded data, switch to sliding
+                self.recording_done = True
+                self.frozen_x = list(self.history_x)
+                self.frozen_y = list(self.history_y)
+                self.rec_line.set_data(self.frozen_x, self.frozen_y)
+                self.rec_status_label.config(
+                    text=self.gui.get_text("lbl_monitor_rec_done", "Recording Complete"), 
+                    fg="#4CAF50")
+                self.line.set_data(self.history_x, self.history_y)
+            elif rec_dur > 0 and self.recording_done:
+                # Post-recording: slide new data, keep frozen data visible
+                if len(self.history_x) > len(self.frozen_x) + self.max_points:
+                    excess = len(self.history_x) - len(self.frozen_x) - self.max_points
+                    # Only show frozen + last max_points of live data
+                    live_x = self.history_x[len(self.frozen_x):]
+                    live_y = self.history_y[len(self.frozen_y):]
+                    if len(live_x) > self.max_points:
+                        live_x = live_x[-self.max_points:]
+                        live_y = live_y[-self.max_points:]
+                    self.line.set_data(self.frozen_x + live_x, self.frozen_y + live_y)
+                else:
+                    self.line.set_data(self.history_x, self.history_y)
+            else:
+                # No recording: normal sliding window
+                self.rec_status_label.config(text="")
+                self.recording_done = False
+                if len(self.history_x) > self.max_points:
+                    self.history_x.pop(0)
+                    self.history_y.pop(0)
+                self.line.set_data(self.history_x, self.history_y)
+                self.rec_line.set_data([], [])
+            
+            # X-limits
+            all_x = self.history_x
+            if len(all_x) > 1:
+                self.ax.set_xlim(all_x[0], all_x[-1])
+            elif len(all_x) == 1:
+                self.ax.set_xlim(all_x[0], all_x[0] + 1)
+            
+            # Y-limits
+            try:
+                ymax = float(self.ymax_var.get())
+                self.ax.set_ylim(-5, ymax)
+            except:
+                self.ax.relim()
+                self.ax.autoscale_view(scalex=False, scaley=True)
+                
+            self.canvas.draw_idle()
+        except:
+            self.val_label.config(text="Error")
+
+    def on_close(self):
+        if self in self.gui.monitors:
+            self.gui.monitors.remove(self)
+        self.window.destroy()
+
+if __name__ == "__main__":
+    root = tk.Tk(); app = OceanOpticsGUI(root); root.protocol("WM_DELETE_WINDOW", app.on_close); root.mainloop()

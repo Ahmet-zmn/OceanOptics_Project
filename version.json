@@ -1,6 +1,9 @@
 {
-    "version": "1.0.4",
-    "name": "OceanOptics USB4000 Spectrometer Controller",
-    "date": "2026-02-22",
-    "omni_driver_url": "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe"
+    "version": "1.1.0",
+    "name": "Ocean Optics Spectrometer Controller",
+    "date": "2026-04-06",
+    "update_url": "https://raw.githubusercontent.com/Ahmet-zmn/OceanOptics_Project/main/version.json",
+    "update_note": "Multi-device support (Maya, HR4000), OceanDirect SDK download, Gamry Sync, Y-Axis Auto/Manual toggle, and Monitor Recording features added.",
+    "omni_driver_url": "https://www.oceanoptics.com/wp-content/uploads/2026/01/OmniDriver-2.80-win64-installer.exe",
+    "oceandirect_url": "https://www.oceanoptics.com/wp-content/uploads/2026/01/OceanDirect_3_3_0_Win64.exe"
 }
