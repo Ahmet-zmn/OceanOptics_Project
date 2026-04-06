@@ -1,6 +1,6 @@
 {
     "version": "1.0.7",
-    "name": "Ocean Optics Spectrometer Controller",
+    "name": "OceanOptics USB4000 Spectrometer Controller",
     "setup_name": "OceanOptics_USB4000_Setup.exe",
     "date": "2026-04-06",
     "update_url": "https://raw.githubusercontent.com/Ahmet-zmn/OceanOptics_Project/main/version.json",
