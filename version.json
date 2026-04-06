@@ -1,6 +1,7 @@
 {
     "version": "1.1.2",
-    "name": "OceanOptics USB4000 Spectrometer Controller",
+    "name": "Ocean Optics Spectrometer Controller",
+    "setup_name": "OceanOptics_Controller_Setup.exe",
     "date": "2026-04-06",
     "update_url": "",
     "update_note": "Multi-device support (Maya, HR4000), OceanDirect SDK download, Gamry Sync, Y-Axis Auto/Manual toggle, and Monitor Recording features added.",
