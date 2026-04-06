@@ -397,7 +397,10 @@ class OceanOpticsGUI:
                         break
         
         temp_dir = os.environ.get("TEMP", os.getcwd())
-        target_path = os.path.join(temp_dir, "OceanOptics_USB4000_Setup_Update.exe")
+        setup_filename = getattr(self, '_setup_filename', "OceanOptics_Controller_Setup.exe")
+        base_name = setup_filename.replace(".exe", "")
+        # Versiyon ekleyerek her guncelleme icin benzersiz dosya olustur (Permission Denied hatalarini onler)
+        target_path = os.path.join(temp_dir, f"{base_name}_{new_v}.exe")
         
         def success():
             try:
