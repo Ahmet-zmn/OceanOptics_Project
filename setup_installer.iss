@@ -11,7 +11,7 @@
 ; ============================================================================
 
 #define MyAppName "OceanOptics_USB4000"
-#define MyAppVersion "1.1.2"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "Ahmet OZMEN"
 #define MyAppURL "https://github.com/Ahmet-zmn/OceanOptics_Project"
 #define MyAppExeName "launch_app.bat"
