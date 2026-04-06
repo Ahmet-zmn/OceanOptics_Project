@@ -465,6 +465,13 @@ class OceanOpticsGUI:
 
         def run_dl():
             try:
+                # Eğer hedef dosya zaten varsa, önce silmeyi dene (Permission Denied hatalarını önler)
+                if os.path.exists(target_path):
+                    try:
+                        os.remove(target_path)
+                    except Exception as del_err:
+                        self.log_update_error(f"Could not delete existing temp file {target_path}: {del_err}")
+                
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req) as response:
                     total_size = int(response.info().get('Content-Length', 0))
